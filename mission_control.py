@@ -101,7 +101,7 @@ class FlightStatus(object):
         self._current_task_key = None
         self._current_task_time = None
         self._current_task_duration = None
-        self._current_task_last_time = None
+        self._current_task_last_time = 0.0
         self._mission_plan={}
 
     # @property
