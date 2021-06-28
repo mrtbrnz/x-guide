@@ -82,11 +82,11 @@ class Commands():
     def land(self):
         pass
 
-    def accelerate(self, north=0.0, east=0.0, down=0.0):
+    def accelerate(self, north=0.0, east=0.0, down=0.0, flag=0):
         print('Accelerating')
         msg = PprzMessage("datalink", "DESIRED_SETPOINT")
         msg['ac_id'] = self._ac_id
-        msg['flag'] = 0 # 0:2D, 1:full 3D
+        msg['flag'] = flag # 0:2D, 1:full 3D
         msg['ux'] = north
         msg['uy'] = east
         msg['uz'] = down
@@ -99,7 +99,9 @@ class FlightStatus(object):
         self._state = None
         self._current_task = None
         self._current_task_key = None
+        self._current_task_time = None
         self._current_task_duration = None
+        self._current_task_last_time = None
         self._mission_plan={}
 
     # @property
@@ -120,6 +122,7 @@ class FlightStatus(object):
                 self._current_task = self._mission_plan[_k]
                 self._current_task_key = _k
                 self._current_task_duration = self._current_task['duration']
+                self._current_task_time = time.time()-self._current_task['start']
                 break
         # Decide to finalize task according to its duration:
         if self._current_task['start'] == None:
@@ -129,7 +132,7 @@ class FlightStatus(object):
                 self._mission_plan[self._current_task_key]['finalized'] = True
 
 
-        print(self._current_task_key)
+        # print(self._current_task_key)
         # return self._current_task
         #print(f'Mission Plan :{_k} is {self._mission_plan[_k]['start']}')
             
@@ -137,6 +140,10 @@ class FlightStatus(object):
     def task(self):
         self.check_current_task()
         return self._current_task_key
+
+    def get_current_task_time(self):
+        self.check_current_task()
+        return self._current_task_time
 
 
 class Vehicle(object):
@@ -178,6 +185,13 @@ class Vehicle(object):
             ex = 0 ; ey = 0 ; ealpha = 0 ; ea = 1.1 ; eb = 1.1
             print(f'We are inside assign properties for id {self._ac_id}')
             self.traj = TrajectoryEllipse(np.array([self._position[0], self._position[1]]), ealpha, ea, eb)
+            self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=1.0)
+            self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
+                                                        XYZ_center=np.array([1.1, 1.1, -0.6]),
+                                                        XYZ_delta=np.array([0., np.pi/2, 0.]),
+                                                        XYZ_w=np.array([1,1,1]),
+                                                        alpha=0.,
+                                                        controller=self.ctr)
 
     def get_vector_field(self,mission_task):
         V_des = np.zeros(3)
@@ -191,11 +205,14 @@ class Vehicle(object):
 
         return V_des
 
-    def send_acceleration(self, V_des):
+    def send_acceleration(self, V_des, A_3D=False):
         err = V_des - self._velocity#[:2]
         print(f'Velocity error {err[0]} , {err[1]}, {err[2]}')
         acc = err*self.ka
-        self.cmd.accelerate(acc[0],acc[1],2) # Z is fixed to have a constant altitude... FIXME for 3D !
+        if A_3D :
+            self.cmd.accelerate(acc[0],acc[1],-acc[2], flag=1)
+        else:
+            self.cmd.accelerate(acc[0],acc[1],2, flag=0) # Z is fixed to have a constant altitude... FIXME for 3D !
         # return acc
 
 
@@ -205,6 +222,8 @@ class Vehicle(object):
         if mission_task == 'takeoff':
             print('TAKE-OFF!!!')
             if not self._take_off :
+                self.cmd.jump_to_block(1)
+                time.sleep(0.5)
                 self.cmd.jump_to_block(2)
                 self._take_off = True
 
@@ -213,10 +232,20 @@ class Vehicle(object):
             V_des += self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
             self.send_acceleration(V_des)
 
+        elif mission_task == 'parametric_circle':
+            print('We are circling with parametric circle !!!')
+            now = self.fs.get_current_task_time()
+            dt = now-self.fs._current_task_last_time
+            self._current_task_last_time = now
+            V_des_increment,uw = self.traj_parametric.get_vector_field(self._position[0], self._position[1], self._position[2], self.gvf_parameter)
+            V_des += V_des_increment 
+            self.gvf_parameter += uw*dt
+            self.send_acceleration(V_des, A_3D=True)
+
         # print(self.belief_map.keys())
         elif mission_task == 'nav2land':
             print('We are going for landing!!!')
-            self.send_acceleration(V_des)
+            self.send_acceleration(V_des) # This is 2D with fixed 2m altitude height AGL
 
 
         elif mission_task == 'land':
@@ -403,7 +432,8 @@ def main():
     target_id = args.target_id
 
     mission_plan_dict={ 'takeoff' :{'start':None, 'duration':15, 'finalized':False},
-                        'circle'  :{'start':None, 'duration':55, 'finalized':False},
+                        'parametric_circle'  :{'start':None, 'duration':15, 'finalized':False},
+                        # 'circle'  :{'start':None, 'duration':55, 'finalized':False},
                         'nav2land':{'start':None, 'duration':5,  'finalized':False},
                         'land'    :{'start':None, 'duration':10, 'finalized':False} } #,
                         # 'kill'    :{'start':None, 'duration':10, 'finalized':False} }

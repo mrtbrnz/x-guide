@@ -17,9 +17,9 @@ class Controller:
         self.s = s
 
 
-class traj_parametric:
+class ParametricTrajectory:
     def __init__(self, XYZ_off=np.array([0.,0.,2.]), XYZ_center=np.array([1.1, 1.1, -0.2]),
-                 XYZ_delta=np.array([0., np.pi/2, 0.]), XYZ_w=np.array([1,1,1]), alpha=np.pi/4, controller=Controller):
+                 XYZ_delta=np.array([0., np.pi/2, 0.]), XYZ_w=np.array([1,1,1]), alpha=np.pi/4, controller=Controller()):
         self.XYZ_off = XYZ_off
         self.XYZ_center = XYZ_center
         self.XYZ_delta = XYZ_delta
@@ -27,7 +27,7 @@ class traj_parametric:
         self.alpha = alpha
         self.ctr = controller
 
-    def get_control(self,x,y,z,w):
+    def get_vector_field(self,x,y,z,w):
         cx,cy,cz = self.XYZ_center
         wx,wy,wz = self.XYZ_w
         deltax,deltay,deltaz = self.XYZ_delta
@@ -110,7 +110,7 @@ class traj_parametric:
         u_z = Chi[2][0]*s / np.sqrt(Chi[0][0]*Chi[0][0] + Chi[1][0]*Chi[1][0])
         u_w = Chi[3][0]*s / np.sqrt(Chi[0][0]*Chi[0][0] + Chi[1][0]*Chi[1][0])
         
-        return np.array([u_x, u_y, u_z, u_w])
+        return np.array([u_x, u_y, u_z]), np.array([u_w])
 
 
 class TrajectoryEllipse:
