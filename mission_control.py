@@ -122,10 +122,10 @@ class FlightStatus(object):
                 self._current_task = self._mission_plan[_k]
                 self._current_task_key = _k
                 self._current_task_duration = self._current_task['duration']
-                self._current_task_time = time.time()-self._current_task['start']
+                if self._current_task['start'] != None : self._current_task_time = time.time()-self._current_task['start']
                 break
         # Decide to finalize task according to its duration:
-        if self._current_task['start'] == None or self._current_task['start'] == 0.0:
+        if self._current_task['start'] == None :
             self._current_task['start'] = time.time()
         else:
             if time.time()-self._current_task['start'] > self._current_task_duration :
