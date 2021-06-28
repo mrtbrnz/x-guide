@@ -18,7 +18,7 @@ from settings_xml_parse import PaparazziACSettings
 
 import pprz_connect
 import settings
-from vector_fields import TrajectoryEllipse, spheric_geo_fence, repel, Controller
+from vector_fields import TrajectoryEllipse, ParametricTrajectory, spheric_geo_fence, repel, Controller
 
 from math import radians
 import time
