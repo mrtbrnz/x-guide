@@ -125,7 +125,7 @@ class FlightStatus(object):
                 self._current_task_time = time.time()-self._current_task['start']
                 break
         # Decide to finalize task according to its duration:
-        if self._current_task['start'] == None:
+        if self._current_task['start'] == None or self._current_task['start'] == 0.0:
             self._current_task['start'] = time.time()
         else:
             if time.time()-self._current_task['start'] > self._current_task_duration :
