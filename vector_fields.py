@@ -76,32 +76,32 @@ class ParametricTrajectory:
                           [-f3d*L*L*beta -k3*phi3],
                           [-L*L + beta*(k1*phi1*f1d + k2*phi2*f2d + k3*phi3*f3d)]])
 
-        j44 = beta*beta*(k1*(phi1*f1dd-L*f1d*f1d) + k2*(phi2*f2dd-L*f2d*f2d) + k3*(phi3*f3dd-L*f3d*f3d))
-        J = L*np.array([[-k1*L,        0,      0, -(beta*L)*(beta*L*f1dd-k1*f1d)],
-                       [     0,    -k2*L,      0, -(beta*L)*(beta*L*f2dd-k2*f2d)],
-                       [     0,      0,    -k3*L, -(beta*L)*(beta*L*f3dd-k3*f3d)],
-                       [beta*L*k1*f1d, beta*L*k2*f2d, beta*L*k3*f3d,         j44]])
+        # j44 = beta*beta*(k1*(phi1*f1dd-L*f1d*f1d) + k2*(phi2*f2dd-L*f2d*f2d) + k3*(phi3*f3dd-L*f3d*f3d))
+        # J = L*np.array([[-k1*L,        0,      0, -(beta*L)*(beta*L*f1dd-k1*f1d)],
+                       # [     0,    -k2*L,      0, -(beta*L)*(beta*L*f2dd-k2*f2d)],
+                       # [     0,      0,    -k3*L, -(beta*L)*(beta*L*f3dd-k3*f3d)],
+                       # [beta*L*k1*f1d, beta*L*k2*f2d, beta*L*k3*f3d,         j44]])
 
         #G, Fp, Gp
-        G = np.array([[1,0,0,0],
-                      [0,1,0,0],
-                      [0,0,0,0],
-                      [0,0,0,0]])
+        # G = np.array([[1,0,0,0],
+                      # [0,1,0,0],
+                      # [0,0,0,0],
+                      # [0,0,0,0]])
 
-        Fp = np.array([[0, -1, 0, 0],
-                       [1,  0, 0, 0]])
+        # Fp = np.array([[0, -1, 0, 0],
+                       # [1,  0, 0, 0]])
 
-        Gp = np.array([[0, -1, 0, 0],
-                       [1,  0, 0, 0],
-                       [0,  0, 0, 0],
-                       [0,  0, 0, 0]])
+        # Gp = np.array([[0, -1, 0, 0],
+                       # [1,  0, 0, 0],
+                       # [0,  0, 0, 0],
+                       # [0,  0, 0, 0]])
 
     #     h = np.array([[np.cos(theta)],[np.sin(theta)]])
     #     ht = h.transpose()
 
-        Chit = Chi.transpose()
-        Chinorm = np.sqrt(Chi.transpose().dot(Chi))[0][0]
-        Chih = Chi / Chinorm
+        # Chit = Chi.transpose()
+        # Chinorm = np.sqrt(Chi.transpose().dot(Chi))[0][0]
+        # Chih = Chi / Chinorm
 
     #     u_theta = (-(1/(Chit.dot(G).dot(Chi))*Chit.dot(Gp).dot(np.eye(4) - Chih.dot(Chih.transpose())).dot(J).dot(X_dot)) - ktheta*ht.dot(Fp).dot(Chi) / np.sqrt(Chit.dot(G).dot(Chi)))[0][0]
 

@@ -234,12 +234,16 @@ class Vehicle(object):
 
         elif mission_task == 'parametric_circle':
             print('We are circling with parametric circle !!!')
-            now = self.fs.get_current_task_time()
-            dt = now-self.fs._current_task_last_time
-            self._current_task_last_time = now
+            # now = time.time() #self.fs.get_current_task_time()
+            # dt = now-self.fs._current_task_last_time
+            # self._current_task_last_time = now
             V_des_increment,uw = self.traj_parametric.get_vector_field(self._position[0], self._position[1], self._position[2], self.gvf_parameter)
+            # import pdb
+            # pdb.set_trace()
+            # print(f'Shape of V_des : {V_des_increment.shape}')
+            # print(f'dt : {0.1}, parameter : {self.gvf_parameter} ')
             V_des += V_des_increment 
-            self.gvf_parameter += uw*dt
+            self.gvf_parameter += -uw[0]*0.1 #dt
             self.send_acceleration(V_des, A_3D=True)
 
         # print(self.belief_map.keys())
@@ -355,7 +359,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        # self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
@@ -376,7 +380,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
-        self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+        # self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
         ################################################################
 
     # <message name="ROTORCRAFT_FP" id="147">
@@ -432,11 +436,13 @@ def main():
     target_id = args.target_id
 
     mission_plan_dict={ 'takeoff' :{'start':None, 'duration':15, 'finalized':False},
-                        'parametric_circle'  :{'start':None, 'duration':15, 'finalized':False},
-                        # 'circle'  :{'start':None, 'duration':55, 'finalized':False},
+                        'circle'  :{'start':None, 'duration':30, 'finalized':False},
+                        'parametric_circle'  :{'start':None, 'duration':65, 'finalized':False},
                         'nav2land':{'start':None, 'duration':5,  'finalized':False},
                         'land'    :{'start':None, 'duration':10, 'finalized':False} } #,
                         # 'kill'    :{'start':None, 'duration':10, 'finalized':False} }
+    
+    # mission_plan_dict={ 'parametric_circle'  :{'start':None, 'duration':15, 'finalized':False} }
 
     vehicle_parameter_dict={}
 
