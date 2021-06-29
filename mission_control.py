@@ -187,7 +187,7 @@ class Vehicle(object):
             self.traj = TrajectoryEllipse(np.array([self._position[0], self._position[1]]), ealpha, ea, eb)
             self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=1.0)
             self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
-                                                        XYZ_center=np.array([1.1, 1.1, -0.6]),
+                                                        XYZ_center=np.array([1.3, 1.3, -0.6]),
                                                         XYZ_delta=np.array([0., np.pi/2, 0.]),
                                                         XYZ_w=np.array([1,1,1]),
                                                         alpha=0.,
@@ -222,7 +222,7 @@ class Vehicle(object):
         if mission_task == 'takeoff':
             print('TAKE-OFF!!!')
             if not self._take_off :
-                self.cmd.jump_to_block(1)
+                self.cmd.jump_to_block(2)
                 time.sleep(0.5)
                 self.cmd.jump_to_block(2)
                 self._take_off = True
@@ -250,6 +250,7 @@ class Vehicle(object):
         elif mission_task == 'nav2land':
             print('We are going for landing!!!')
             self.send_acceleration(V_des) # This is 2D with fixed 2m altitude height AGL
+            if self.fs._current_task_time > 3. : self.cmd.jump_to_block(5)
 
 
         elif mission_task == 'land':
@@ -296,10 +297,13 @@ class MissionControl(object):
             rc.run()
 
     def assign(self,mission_plan_dict):
+        i=0
         for _id in self._vehicle_id_list:
             print(f'Vehicle id :{_id} mission plan updated ! ')
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
             rc.fs.set_mission_plan(mission_plan_dict)
+            rc.gvf_parameter = (len(self._vehicle_id_list)-i)*20.
+            i+=1
 
     def assign_vehicle_properties(self):
         for _id in self._vehicle_id_list:
@@ -359,7 +363,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        #self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
@@ -380,7 +384,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
-        # self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+        self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
         ################################################################
 
     # <message name="ROTORCRAFT_FP" id="147">
@@ -435,9 +439,9 @@ def main():
     interface  = IvyMessagesInterface("PprzConnect")
     target_id = args.target_id
 
-    mission_plan_dict={ 'takeoff' :{'start':None, 'duration':15, 'finalized':False},
-                        'circle'  :{'start':None, 'duration':30, 'finalized':False},
-                        'parametric_circle'  :{'start':None, 'duration':65, 'finalized':False},
+    mission_plan_dict={ 'takeoff' :{'start':None, 'duration':20, 'finalized':False},
+                        'circle'  :{'start':None, 'duration':15, 'finalized':False},
+                        'parametric_circle'  :{'start':None, 'duration':55, 'finalized':False},
                         'nav2land':{'start':None, 'duration':5,  'finalized':False},
                         'land'    :{'start':None, 'duration':10, 'finalized':False} } #,
                         # 'kill'    :{'start':None, 'duration':10, 'finalized':False} }
