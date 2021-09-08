@@ -114,7 +114,7 @@ class ParametricTrajectory:
 
 
 class TrajectoryEllipse:
-    def __init__(self, XYoff, rot, a, b ,s=-1, ke=1):
+    def __init__(self, XYoff, rot, a, b ,s=1, ke=1):
         self.XYoff = XYoff
         self.a, self.b = a, b
         self.s,self.ke = s, ke

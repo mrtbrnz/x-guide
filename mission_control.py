@@ -20,7 +20,7 @@ import pprz_connect
 import settings
 from vector_fields import TrajectoryEllipse, ParametricTrajectory, spheric_geo_fence, repel, Controller
 
-from math import radians
+from math import radians, atan2
 import time
 import numpy as np
 
@@ -153,6 +153,7 @@ class Vehicle(object):
         self._land = False
         self._ac_id = ac_id
         self._interface = interface
+        self._position_initial = np.zeros(3) # Initial Position for safely landing after Ctrl+C
         self._position = np.zeros(3) # Position
         self._velocity = np.zeros(3) # Velocity
         self.W = np.zeros(3) # Angles
@@ -184,8 +185,10 @@ class Vehicle(object):
             print('Initialization :::',self._initialized)
             ex = 0 ; ey = 0 ; ealpha = 0 ; ea = 1.1 ; eb = 1.1
             print(f'We are inside assign properties for id {self._ac_id}')
+            # We have the current position of the vehicle and can set it to the circle center
             self.traj = TrajectoryEllipse(np.array([self._position[0], self._position[1]]), ealpha, ea, eb)
-            self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=1.0)
+            self._position_initial = self._position.copy() # Just for starting point assignement
+            self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=1.40)
             self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
                                                         XYZ_center=np.array([1.3, 1.3, -0.6]),
                                                         XYZ_delta=np.array([0., np.pi/2, 0.]),
@@ -193,15 +196,18 @@ class Vehicle(object):
                                                         alpha=0.,
                                                         controller=self.ctr)
 
-    def get_vector_field(self,mission_task):
+    def get_vector_field(self,mission_task, position=None):
         V_des = np.zeros(3)
-        V_des += spheric_geo_fence(self._position[0], self._position[1], self._position[2], x_source=0., y_source=0., z_source=0., strength=-0.07)
+        if position is not None:
+            V_des += spheric_geo_fence(position[0], position[1], position[2], x_source=0., y_source=0., z_source=0., strength=-0.07)
+        else:
+            V_des += spheric_geo_fence(self._position[0], self._position[1], self._position[2], x_source=0., y_source=0., z_source=0., strength=-0.07)
         for _k in self.belief_map.keys():
             # float(self.belief_map[_k]['X'])
             V_des += repel(self._position[0], self._position[1], self._position[2], 
                     x_source=float(self.belief_map[_k]['X']), 
                     y_source=float(self.belief_map[_k]['Y']), 
-                    z_source=float(self.belief_map[_k]['Z']), strength=4.0)
+                    z_source=float(self.belief_map[_k]['Z']), strength=5.0)
 
         return V_des
 
@@ -230,6 +236,12 @@ class Vehicle(object):
         elif mission_task == 'circle':
             print('We are circling!!!')
             V_des += self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
+            # Getting and setting the navigation heading of the vehicles
+            
+            heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+            heading_cur = self.sm["nav_heading"].value
+            # print(f'Nav heading error is : {heading_des-heading_cur}')
+            self.sm["nav_heading"] = heading_des
             self.send_acceleration(V_des)
 
         elif mission_task == 'parametric_circle':
@@ -244,6 +256,12 @@ class Vehicle(object):
             # print(f'dt : {0.1}, parameter : {self.gvf_parameter} ')
             V_des += V_des_increment 
             self.gvf_parameter += -uw[0]*0.1 #dt
+
+            # Getting and setting the navigation heading of the vehicles
+            # print(f'Nav heading value is : {self.sm["nav_heading"]}')
+            self.sm["nav_heading"] = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+            # self.sm["nav_heading"] = 0.0
+
             self.send_acceleration(V_des, A_3D=True)
 
         # print(self.belief_map.keys())
@@ -259,6 +277,9 @@ class Vehicle(object):
                 self.cmd.jump_to_block(5)
                 self._land = True
 
+        elif mission_task == 'safe2land':
+            V_des = self.get_vector_field(self.fs.task, position=self._position_initial)
+            self.send_acceleration(V_des)
         # else mission_task == 'kill' :
 
 
@@ -301,9 +322,11 @@ class MissionControl(object):
         for _id in self._vehicle_id_list:
             print(f'Vehicle id :{_id} mission plan updated ! ')
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
+            rc.sm = settings.PprzSettingsManager(self._connect.conf_by_id(str(rc.id)).settings, str(rc.id), self._connect.ivy)
             rc.fs.set_mission_plan(mission_plan_dict)
-            rc.gvf_parameter = (len(self._vehicle_id_list)-i)*20.
+            rc.gvf_parameter = (len(self._vehicle_id_list)-i)*30.
             i+=1
+
 
     def assign_vehicle_properties(self):
         for _id in self._vehicle_id_list:
@@ -327,8 +350,10 @@ class MissionControl(object):
     def subscribe_to_msg(self):
         # bind to INS message
         def ins_cb(ac_id, msg):
-            if ac_id in self.ids and msg.name == "INS":
-                rc = self.rotorcrafts[self.ids.index(ac_id)]
+            # if ac_id in self.ids and msg.name == "INS":
+            #     rc = self.rotorcrafts[self.ids.index(ac_id)]
+            if ac_id in self._vehicle_id_list and msg.name == "INS":
+                rc = self.vehicles[self._vehicle_id_list.index(ac_id)]
                 i2p = 1. / 2**8     # integer to position
                 i2v = 1. / 2**19    # integer to velocity
                 rc._position[0] = float(msg['ins_x']) * i2p
@@ -363,7 +388,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        #self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        # self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
@@ -385,6 +410,7 @@ class MissionControl(object):
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
         self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+
         ################################################################
 
     # <message name="ROTORCRAFT_FP" id="147">
@@ -439,13 +465,13 @@ def main():
     interface  = IvyMessagesInterface("PprzConnect")
     target_id = args.target_id
 
-    mission_plan_dict={ 'takeoff' :{'start':None, 'duration':20, 'finalized':False},
-                        'circle'  :{'start':None, 'duration':15, 'finalized':False},
-                        'parametric_circle'  :{'start':None, 'duration':55, 'finalized':False},
-                        'nav2land':{'start':None, 'duration':5,  'finalized':False},
-                        'land'    :{'start':None, 'duration':10, 'finalized':False} } #,
+    mission_plan_dict={# 'takeoff' :{'start':None, 'duration':20, 'finalized':False},
+                        # 'circle'  :{'start':None, 'duration':15, 'finalized':False},
+                        'parametric_circle'  :{'start':None, 'duration':15, 'finalized':False},
+                        # 'nav2land':{'start':None, 'duration':5,  'finalized':False},
+                        # 'land'    :{'start':None, 'duration':10, 'finalized':False} } #,
                         # 'kill'    :{'start':None, 'duration':10, 'finalized':False} }
-    
+                        }
     # mission_plan_dict={ 'parametric_circle'  :{'start':None, 'duration':15, 'finalized':False} }
 
     vehicle_parameter_dict={}
@@ -458,11 +484,18 @@ def main():
 
         while True:
             mc.run_every_vehicle()
-            time.sleep(0.1)
+            time.sleep(0.09)
 
 
 
     except (KeyboardInterrupt, SystemExit):
+        mission_end_plan_dict={'safe2land'  :{'start':None, 'duration':15, 'finalized':False}, }
+        mc.assign(mission_end_plan_dict)
+        mc.assign_vehicle_properties()
+        time.sleep(0.5)
+        for i in range(2):
+            mc.run_every_vehicle()
+            time.sleep(0.5)
         print('Shutting down...')
         # mc.set_nav_mode()
         mc.shutdown()
