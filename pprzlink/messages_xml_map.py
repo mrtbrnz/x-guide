@@ -1,4 +1,21 @@
 #!/usr/bin/env python
+#
+# This file is part of PPRZLINK.
+# 
+# PPRZLINK is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# PPRZLINK is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with PPRZLINK.  If not, see <https://www.gnu.org/licenses/>.
+#
+
 
 from __future__ import absolute_import, print_function
 
@@ -26,6 +43,8 @@ message_dictionary_name_id = {}
 message_dictionary_class_id_name = {}
 message_dictionary_class_name_id = {}
 message_dictionary_broadcast = {}
+
+
 
 class MessagesNotFound(Exception):
     def __init__(self, filename):
@@ -95,105 +114,100 @@ def parse_messages(messages_file=''):
                     message_dictionary_coefs[class_name][message_id].append(1.)
 
 
-def find_msg_by_name(name):
+def _ensure_message_dictionary():
     if not message_dictionary:
         parse_messages()
-    for msg_class in message_dictionary:
-        if name in message_dictionary[msg_class]:
+
+
+def find_msg_by_name(name):
+    _ensure_message_dictionary()
+    for msg_class, msg_name in message_dictionary.items():
+        if name in msg_name:
             #print("found msg name %s in class %s" % (name, msg_class))
             return msg_class, name
-    print("Error: msg_name %s not found." % name)
-    return None, None
+
+    raise ValueError("Error: msg_name %s not found." % name)
 
 
 def get_msgs(msg_class):
-    if not message_dictionary:
-        parse_messages()
-    if msg_class in message_dictionary:
-        return message_dictionary[msg_class]
-    else:
-        print("Error: msg_class %s not found." % msg_class)
-    return []
+    _ensure_message_dictionary()
+    if msg_class not in message_dictionary:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    return message_dictionary[msg_class]
 
 
 def get_class_name(class_id):
-    if not message_dictionary:
-        parse_messages()
-    if class_id in message_dictionary_class_id_name:
-        return message_dictionary_class_id_name[class_id]
-    else:
-        print("Error: class_id %d not found." % class_id)
-    return None
+    _ensure_message_dictionary()
+    if class_id not in message_dictionary_class_id_name:
+        raise ValueError("Error: class_id %d not found." % class_id)
+
+    return message_dictionary_class_id_name[class_id]
+
 
 def get_class_id(class_name):
-    if not message_dictionary:
-        parse_messages()
-    if class_name in message_dictionary_class_name_id:
-        return message_dictionary_class_name_id[class_name]
-    else:
-        print("Error: class_name %s not found." % class_name)
-    return None
+    _ensure_message_dictionary()
+    if class_name not in message_dictionary_class_name_id:
+        raise ValueError("Error: class_name %s not found." % class_name)
+
+    return message_dictionary_class_name_id[class_name]
 
 
 def get_msg_name(msg_class, msg_id):
-    if not message_dictionary:
-        parse_messages()
-    if msg_class in message_dictionary:
-        if msg_id in message_dictionary_id_name[msg_class]:
-            return message_dictionary_id_name[msg_class][msg_id]
-        else:
-            print("Error: msg_id %d not found in msg_class %s." % (msg_id, msg_class))
-    else:
-        print("Error: msg_class %s not found." % msg_class)
-    return ""
+    _ensure_message_dictionary()
+    if msg_class not in message_dictionary:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    if msg_id not in message_dictionary_id_name[msg_class]:
+        raise ValueError("Error: msg_id %d not found in msg_class %s." % (msg_id, msg_class))
+
+    return message_dictionary_id_name[msg_class][msg_id]
 
 
 def get_msg_fields(msg_class, msg_name):
-    if not message_dictionary:
-        parse_messages()
-    if msg_class in message_dictionary:
-        if msg_name in message_dictionary[msg_class]:
-            return message_dictionary[msg_class][msg_name]
-        else:
-            print("Error: msg_name %s not found in msg_class %s." % (msg_name, msg_class))
-    else:
-        print("Error: msg_class %s not found." % msg_class)
-    return []
+    _ensure_message_dictionary()
+    if msg_class not in message_dictionary:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    if msg_name not in message_dictionary[msg_class]:
+        raise ValueError("Error: msg_name %s not found in msg_class %s." % (msg_name, msg_class))
+
+    return message_dictionary[msg_class][msg_name]
 
 
 def get_msg_id(msg_class, msg_name):
-    if not message_dictionary:
-        parse_messages()
-    try:
-        return message_dictionary_name_id[msg_class][msg_name]
-    except KeyError:
-        print("Error: msg_name %s not found in msg_class %s." % (msg_name, msg_class))
-        return 0
+    _ensure_message_dictionary()
+    if msg_class not in message_dictionary_name_id:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    if msg_name not in message_dictionary_name_id[msg_class]:
+        raise ValueError("Error: msg_name %s not found in msg_class %s." % (msg_name, msg_class))
+
+    return message_dictionary_name_id[msg_class][msg_name]
 
 
 def get_msg_fieldtypes(msg_class, msg_id):
-    if not message_dictionary:
-        parse_messages()
-    if msg_class in message_dictionary_types:
-        if msg_id in message_dictionary_types[msg_class]:
-            return message_dictionary_types[msg_class][msg_id]
-        else:
-            print("Error: message with ID %d not found in msg_class %s." % (msg_id, msg_class))
-    else:
-        print("Error: msg_class %s not found." % msg_class)
-    return []
+    _ensure_message_dictionary()
+
+    if msg_class not in message_dictionary_types:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    if msg_id not in message_dictionary_types[msg_class]:
+        raise ValueError("Error: message with ID %d not found in msg_class %s." % (msg_id, msg_class))
+
+    return message_dictionary_types[msg_class][msg_id]
+
 
 def get_msg_fieldcoefs(msg_class, msg_id):
-    if not message_dictionary:
-        parse_messages()
-    if msg_class in message_dictionary_coefs:
-        if msg_id in message_dictionary_coefs[msg_class]:
-            return message_dictionary_coefs[msg_class][msg_id]
-        else:
-            print("Error: message with ID %d not found in msg_class %s." % (msg_id, msg_class))
-    else:
-        print("Error: msg_class %s not found." % msg_class)
-    return []
+    _ensure_message_dictionary()
+
+    if msg_class not in message_dictionary_coefs:
+        raise ValueError("Error: msg_class %s not found." % msg_class)
+
+    if msg_id not in message_dictionary_coefs[msg_class]:
+        raise ValueError("Error: message with ID %d not found in msg_class %s." % (msg_id, msg_class))
+
+    return message_dictionary_coefs[msg_class][msg_id]
 
 
 def test():
@@ -208,6 +222,7 @@ def test():
         print("Listing %i messages in '%s' msg_class" % (len(message_dictionary[args.msg_class]), args.msg_class))
         for msg_name, msg_fields in message_dictionary[args.msg_class].iteritems():
             print(msg_name + ": " + ", ".join(msg_fields))
+
 
 if __name__ == '__main__':
     test()

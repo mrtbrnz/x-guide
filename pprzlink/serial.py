@@ -1,10 +1,32 @@
+#
+# This file is part of PPRZLINK.
+# 
+# PPRZLINK is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# PPRZLINK is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with PPRZLINK.  If not, see <https://www.gnu.org/licenses/>.
+#
+
 from __future__ import absolute_import, division, print_function
 
 import threading
 import serial
+import logging
+
 
 from pprzlink.message import PprzMessage
 from pprzlink.pprz_transport import PprzTransport
+
+
+logger = logging.getLogger("PprzLink")
 
 
 class SerialMessagesInterface(threading.Thread):
@@ -19,12 +41,12 @@ class SerialMessagesInterface(threading.Thread):
         try:
             self.ser = serial.Serial(device, baudrate, timeout=1.0)
         except serial.SerialException:
-            print("Error: unable to open serial port '%s'" % device)
+            logger.error("Error: unable to open serial port '%s'" % device)
             exit(0)
         self.trans = PprzTransport(msg_class)
 
     def stop(self):
-        print("End thread and close serial link")
+        logger.info("End thread and close serial link")
         self.running = False
         self.ser.close()
 
@@ -52,12 +74,16 @@ class SerialMessagesInterface(threading.Thread):
                 c = self.ser.read(1)
                 if len(c) == 1:
                     if self.trans.parse_byte(c):
-                        (sender_id, receiver_id, component_id, msg) = self.trans.unpack()
-                        if self.verbose:
-                            print("New incoming message '%s' from %i (%i) to %i" % (msg.name, sender_id, component_id, receiver_id))
-                        # Callback function on new message
-                        if self.id == receiver_id:
-                            self.callback(sender_id, msg)
+                        try:
+                            (sender_id, receiver_id, component_id, msg) = self.trans.unpack()
+                        except ValueError as e:
+                            logger.warning("Ignoring unknown message, %s" % e)
+                        else:
+                            if self.verbose:  # See the note on the same line in v1.0
+                                logger.info("New incoming message '%s' from %i (%i) to %i" % (msg.name, sender_id, component_id, receiver_id))
+                            # Callback function on new message
+                            if self.id == receiver_id:
+                                self.callback(sender_id, msg)
 
         except StopIteration:
             pass

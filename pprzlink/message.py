@@ -1,3 +1,20 @@
+#
+# This file is part of PPRZLINK.
+# 
+# PPRZLINK is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# PPRZLINK is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with PPRZLINK.  If not, see <https://www.gnu.org/licenses/>.
+#
+
 """
 Paparazzi message representation
 
@@ -176,21 +193,21 @@ class PprzMessage(object):
         return str(self.name) + ';' + self.payload_to_ivy_string(sep=';')
 
     def payload_to_ivy_string(self, sep=' '):
-        ivy_str = ''
+        fields = []
         for idx, t in enumerate(self.fieldtypes):
             if "char[" in t:
                 str_value =''
                 for c in self.fieldvalues[idx]:
-                    if sys.version_info >= (3,):
+                    if isinstance(c, bytes):
                         str_value += c.decode()
                     else:
                         str_value += c
-                ivy_str += '"' + str_value + '"'
+                fields.append('"' + str_value + '"')
             elif '[' in t:
-                ivy_str += ','.join([str(x) for x in self.fieldvalues[idx]])
+                fields.append(','.join([str(x) for x in self.fieldvalues[idx]]))
             else:
-                ivy_str += str(self.fieldvalues[idx])
-            ivy_str += sep
+                fields.append(str(self.fieldvalues[idx]))
+        ivy_str = sep.join(fields)
         return ivy_str
 
     def ivy_string_to_payload(self, data):
@@ -208,10 +225,10 @@ class PprzMessage(object):
         for el in re.split('([|\"][^|\"]*[|\"])', data):
             if '|' not in el and '"' not in el:
                 # split non-array strings further up
-                for e in [d for d in el.split(' ') if d is not '']:
+                for e in [d for d in el.split(' ') if d != '']:
                     if ',' in e:
                         # array but not a string
-                        values.append([x for x in e.split(',') if x is not ''])
+                        values.append([x for x in e.split(',') if x != ''])
                     else:
                         # not an array
                         values.append(e)
@@ -224,9 +241,9 @@ class PprzMessage(object):
         struct_string = "<"
         data = []
         length = 0
+        r = re.compile('[\[\]]')
         for idx, t in enumerate(self.fieldtypes):
             bin_type = self.fieldbintypes(t)
-            r = re.compile('[\[\]]')
             s = r.split(t)
             if len(s) > 1: # this is an array
                 array_length = len(self.fieldvalues[idx])
@@ -241,6 +258,8 @@ class PprzMessage(object):
                         data.append(float(x))
                     elif bin_type[0]== 'B' or bin_type[0]== 'H' or bin_type[0]== 'L' or bin_type[0]== 'b' or bin_type[0]== 'h' or bin_type[0]== 'l':
                         data.append(int(x))
+                    elif bin_type[0]== 'c':
+                        data.append(x.encode())
                     else:
                         data.append(x)
             else:
@@ -259,11 +278,16 @@ class PprzMessage(object):
     def binary_to_payload(self, data):
         msg_offset = 0
         values = []
+        r = re.compile('[\[\]]')
         for idx, t in enumerate(self.fieldtypes):
             bin_type = self.fieldbintypes(t)
-            if '[' in t:
-                array_length = data[msg_offset]
-                msg_offset += 1
+            s = r.split(t)
+            if len(s) > 1: # this is an array
+                if len(s[1]) == 0: # this is a variable length array
+                    array_length = data[msg_offset]
+                    msg_offset += 1
+                else:
+                    array_length = int(s[1])
                 array_value = []
                 for count in range(0, array_length):
                     array_value.append(struct.unpack('<' + bin_type[0], data[msg_offset:msg_offset + bin_type[1]])[0])
