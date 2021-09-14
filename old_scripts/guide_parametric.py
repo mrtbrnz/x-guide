@@ -15,7 +15,7 @@ import time
 
 # Paparazzi guidance api
 from guidance_common import Rotorcraft , Guidance
-from trajectory_vector_fields import traj_parametric, Controller
+from vector_fields import traj_parametric, Controller
 
 def main():
     import argparse
