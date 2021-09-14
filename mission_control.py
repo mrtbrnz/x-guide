@@ -1,9 +1,12 @@
-#!/usr/bin/env python
-
+#!/usr/bin/env python3
 from __future__ import print_function
 
 import sys
 from os import path, getenv
+
+from math import radians, atan2
+import time
+import numpy as np
 
 # if PAPARAZZI_SRC or PAPARAZZI_HOME not set, then assume the tree containing this
 # file is a reasonable substitute
@@ -11,18 +14,15 @@ PPRZ_HOME = getenv("PAPARAZZI_HOME", path.normpath(path.join(path.dirname(path.a
 PPRZ_SRC = getenv("PAPARAZZI_SRC", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
 sys.path.append(PPRZ_SRC + "/sw/lib/python")
 sys.path.append(PPRZ_HOME + "/var/lib/python") # pprzlink
+import settings
+import pprz_connect
+from settings_xml_parse import PaparazziACSettings
 
 from pprzlink.ivy import IvyMessagesInterface
 from pprzlink.message import PprzMessage
-from settings_xml_parse import PaparazziACSettings
 
-import pprz_connect
-import settings
 from vector_fields import TrajectoryEllipse, ParametricTrajectory, spheric_geo_fence, repel, Controller
 
-from math import radians, atan2
-import time
-import numpy as np
 
 class Commands():
     def __init__(self, ac_id, interface):
@@ -188,7 +188,7 @@ class Vehicle(object):
             # We have the current position of the vehicle and can set it to the circle center
             self.traj = TrajectoryEllipse(np.array([self._position[0], self._position[1]]), ealpha, ea, eb)
             self._position_initial = self._position.copy() # Just for starting point assignement
-            self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=1.40)
+            self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=0.50)
             self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
                                                         XYZ_center=np.array([1.3, 1.3, -0.6]),
                                                         XYZ_delta=np.array([0., np.pi/2, 0.]),
@@ -241,7 +241,8 @@ class Vehicle(object):
             heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
             heading_cur = self.sm["nav_heading"].value
             # print(f'Nav heading error is : {heading_des-heading_cur}')
-            self.sm["nav_heading"] = heading_des
+            if self.sm:
+                self.sm["nav_heading"] = heading_des
             self.send_acceleration(V_des)
 
         elif mission_task == 'parametric_circle':
@@ -259,7 +260,8 @@ class Vehicle(object):
 
             # Getting and setting the navigation heading of the vehicles
             # print(f'Nav heading value is : {self.sm["nav_heading"]}')
-            self.sm["nav_heading"] = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+            if self.sm:
+                self.sm["nav_heading"] = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
             # self.sm["nav_heading"] = 0.0
 
             self.send_acceleration(V_des, A_3D=True)
@@ -294,6 +296,88 @@ class Vehicle(object):
 def new_ac(conf):
     print(conf)
 
+class SingleControl(object):
+    def __init__(self, verbose=False, interface=None, quad_ids = None):
+        self.verbose = verbose
+        self._interface = interface
+        # self._connect = pprz_connect.PprzConnect(notify=new_ac, ivy=self._interface, verbose=False)
+        # if self._interface == None : self._interface = self._connect.ivy
+        # time.sleep(0.5)
+        # self._vehicle_id_list={}
+        self._vehicle_position_map = {}
+        self.update_vehicle_list()
+        self.define_interface_callback()
+        time.sleep(0.5)
+
+    def define_interface_callback(self):
+
+        def rotorcraft_fp_cb(ac_id, msg): # FIX ME : use single external function for this, instead of repeating...
+            # print(self._vehicle_id_list)
+            # ac_id = int(msg['ac_id'])
+            # print(ac_id)
+            if ac_id in self._vehicle_id_list and msg.name == "ROTORCRAFT_FP":
+                rc = self.vehicles[self._vehicle_id_list.index(ac_id)]
+                i2p = 1. / 2**8     # integer to position
+                i2v = 1. / 2**19    # integer to velocity
+                i2w = 1. / 2**12     # integer to angle
+                rc._position[0] = float(msg['north']) * i2p
+                rc._position[1] = float(msg['east']) * i2p
+                rc._position[2] = float(msg['up']) * i2p
+                rc._velocity[0] = float(msg['vnorth']) * i2v
+                rc._velocity[1] = float(msg['veast']) * i2v
+                rc._velocity[2] = float(msg['vup']) * i2v
+                rc.W[2] = float(msg['psi']) * i2w
+                self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
+                rc.timeout = 0
+                rc._initialized = True
+
+        self._interface.callback = rotorcraft_fp_cb
+        self._interface.start()
+
+    def update_vehicle_list(self):
+        self._vehicle_id_list=[42]#[int(_id) for _id in self._connect.conf_by_id().keys()]
+        self.vehicles = [Vehicle(id, self._interface) for id in self._vehicle_id_list]
+        # self.vehicle = Vehicle(42,self._interface)
+        # self.create_vehicles()
+
+    # def create_vehicles(self):
+    #     self._vehicle_id_list=[int(_id) for _id in self._connect.conf_by_id().keys()]
+    #     self.vehicles = [Vehicle(id, self._interface) for id in self._vehicle_id_list]
+
+    def assign(self,mission_plan_dict):
+        i=0
+        for _id in self._vehicle_id_list:
+            print(f'Vehicle id :{_id} mission plan updated ! ')
+            rc = self.vehicles[self._vehicle_id_list.index(_id)]
+            # rc.sm = settings.PprzSettingsManager(self._connect.conf_by_id(str(rc.id)).settings, str(rc.id), self._connect.ivy)
+            rc.fs.set_mission_plan(mission_plan_dict)
+            rc.gvf_parameter = (len(self._vehicle_id_list)-i)*30.
+            i+=1
+    
+    def assign_vehicle_properties(self):
+        for _id in self._vehicle_id_list:
+            rc = self.vehicles[self._vehicle_id_list.index(_id)]
+            rc.assign_properties()
+               
+    def update_belief_map(self, vehicle):
+        for _k in self._vehicle_position_map.keys():
+            if _k != vehicle._ac_id:
+                vehicle.belief_map[_k] = self._vehicle_position_map[_k]
+
+    def run_vehicle(self):
+        for _id in self._vehicle_id_list:
+            rc = self.vehicles[self._vehicle_id_list.index(_id)]
+            self.update_belief_map(rc)
+            rc.run()
+            
+    def shutdown(self):
+        if self._interface is not None:
+            print("Shutting down THE interface...")
+            self._interface.shutdown()
+            self._interface = None
+
+    def __del__(self):
+        self.shutdown()
 
 class MissionControl(object):
     def __init__(self, verbose=False, interface=None, quad_ids = None):
@@ -313,7 +397,7 @@ class MissionControl(object):
         # Once it is threaded, below lines can be used to start each vehicles runtime
         for _id in self._vehicle_id_list:
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
-            print(f'Vehicle id :{_id} and its index :{self._vehicle_id_list.index(_id)} Position {rc._position[1]}')
+            # print(f'Vehicle id :{_id} and its index :{self._vehicle_id_list.index(_id)} Position {rc._position[1]}')
             self.update_belief_map(rc)
             rc.run()
 
@@ -330,7 +414,6 @@ class MissionControl(object):
 
     def assign_vehicle_properties(self):
         for _id in self._vehicle_id_list:
-            print('Here we are !!!!!!')
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
             rc.assign_properties()
 
@@ -388,7 +471,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        # self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
@@ -409,7 +492,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
-        self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+        # self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
 
         ################################################################
 
@@ -445,25 +528,56 @@ class MissionControl(object):
 
     def shutdown(self):
         if self._interface is not None:
-            print("Shutting down ivy interface...")
+            print("Shutting down THE interface...")
             self._interface.shutdown()
             self._interface = None
 
     def __del__(self):
         self.shutdown()
 
+# def rotorcraft_fp_cb(ac_id, msg):
+#             # print(self._vehicle_id_list)
+#             # ac_id = int(msg['ac_id'])
+#             print('BAAM ', ac_id)
+#             if ac_id in self._vehicle_id_list and msg.name == "ROTORCRAFT_FP":
+#                 rc = self.vehicles[self._vehicle_id_list.index(ac_id)]
+#                 i2p = 1. / 2**8     # integer to position
+#                 i2v = 1. / 2**19    # integer to velocity
+#                 i2w = 1. / 2**12     # integer to angle
+#                 rc._position[0] = float(msg['north']) * i2p
+#                 rc._position[1] = float(msg['east']) * i2p
+#                 rc._position[2] = float(msg['up']) * i2p
+#                 rc._velocity[0] = float(msg['vnorth']) * i2v
+#                 rc._velocity[1] = float(msg['veast']) * i2v
+#                 rc._velocity[2] = float(msg['vup']) * i2v
+#                 rc.W[2] = float(msg['psi']) * i2w
+#                 self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
+#                 rc.timeout = 0
+#                 rc._initialized = True
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Mission Control")
-    parser.add_argument("-ti", "--target_id", dest='target_id', default=2, type=int, help="Target aircraft ID")
-    parser.add_argument("-ri", "--repel_id", dest='repel_id', default=2, type=int, help="Repellant aircraft ID")
-    parser.add_argument("-bi", "--base_id", dest='base_id', default=10, type=int, help="Base aircraft ID")
-
+    parser.add_argument("-on", "--running-on", help="Where is the code running-on", dest='running_on', default='ground')
+    parser.add_argument("-f", "--file", help="path to messages.xml file", default='pprzlink/messages.xml')
+    parser.add_argument("-c", "--class", help="message class", dest='msg_class', default='telemetry')
+    parser.add_argument("-d", "--device", help="device name", dest='dev', default='/dev/ttyUSB0') #ttyTHS1
+    parser.add_argument("-b", "--baudrate", help="baudrate", dest='baud', default=230400, type=int)
+    parser.add_argument("-id", "--ac_id", help="aircraft id (receiver)", dest='ac_id', default=42, type=int)
+    parser.add_argument("--interface_id", help="interface id (sender)", dest='id', default=0, type=int)
+    # parser.add_argument("-ti", "--target_id", dest='target_id', default=2, type=int, help="Target aircraft ID")
+    # parser.add_argument("-ri", "--repel_id", dest='repel_id', default=2, type=int, help="Repellant aircraft ID")
+    # parser.add_argument("-bi", "--base_id", dest='base_id', default=10, type=int, help="Base aircraft ID")
     args = parser.parse_args()
 
-    interface  = IvyMessagesInterface("PprzConnect")
-    target_id = args.target_id
+    if args.running_on == 'ground' :
+        interface  = IvyMessagesInterface("PprzConnect")
+
+    if args.running_on == "serial" :
+        from pprzlink.serial import SerialMessagesInterface
+        interface = SerialMessagesInterface(None, device=args.dev,
+                                               baudrate=args.baud, msg_class=args.msg_class, interface_id=args.id, verbose=False)
+
 
     mission_plan_dict={# 'takeoff' :{'start':None, 'duration':20, 'finalized':False},
                         # 'circle'  :{'start':None, 'duration':15, 'finalized':False},
@@ -476,32 +590,53 @@ def main():
 
     vehicle_parameter_dict={}
 
-    try:
-        mc = MissionControl(interface=interface)
-        mc.assign(mission_plan_dict)
-        mc.assign_vehicle_properties()
-        time.sleep(1.5)
+    if args.running_on == 'ground' :
+        try:
+            mc = MissionControl(interface=interface)
+            mc.assign(mission_plan_dict)
+            mc.assign_vehicle_properties()
+            time.sleep(1.5)
 
-        while True:
-            mc.run_every_vehicle()
-            time.sleep(0.09)
+            while True:
+                mc.run_every_vehicle()
+                time.sleep(0.09)
 
-
-
-    except (KeyboardInterrupt, SystemExit):
-        mission_end_plan_dict={'safe2land'  :{'start':None, 'duration':15, 'finalized':False}, }
-        mc.assign(mission_end_plan_dict)
-        mc.assign_vehicle_properties()
-        time.sleep(0.5)
-        for i in range(2):
-            mc.run_every_vehicle()
+        except (KeyboardInterrupt, SystemExit):
+            mission_end_plan_dict={'safe2land'  :{'start':None, 'duration':15, 'finalized':False}, }
+            mc.assign(mission_end_plan_dict)  # mc.assign_vehicle_properties()
             time.sleep(0.5)
-        print('Shutting down...')
-        # mc.set_nav_mode()
-        mc.shutdown()
-        time.sleep(0.6)
-        exit()
+            for i in range(10):
+                mc.run_every_vehicle()
+                time.sleep(0.5)
+            print('Shutting down...')
+            # mc.set_nav_mode()
+            mc.shutdown()
+            time.sleep(0.6)
+            exit()
 
+    if args.running_on == 'serial' :
+        try:
+            sc = SingleControl(interface=interface)
+            sc.assign(mission_plan_dict)
+            sc.assign_vehicle_properties()
+            time.sleep(1.5)
+
+            while True:
+                sc.run_vehicle()
+                time.sleep(0.09)
+
+        except (KeyboardInterrupt, SystemExit):
+            mission_end_plan_dict={'safe2land'  :{'start':None, 'duration':15, 'finalized':False}, }
+            sc.assign(mission_end_plan_dict) # sc.assign_vehicle_properties()
+            time.sleep(0.5)
+            for i in range(10):
+                sc.run_vehicle()
+                time.sleep(0.5)
+            print('Shutting down...')
+            # mc.set_nav_mode()
+            sc.shutdown()
+            time.sleep(0.6)
+            exit()
 
 
 if __name__ == '__main__':

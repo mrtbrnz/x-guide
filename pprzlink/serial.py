@@ -59,7 +59,7 @@ class SerialMessagesInterface(threading.Thread):
         except:
             pass
 
-    def send(self, msg, sender_id,receiver_id = 0, component_id = 0):
+    def send(self, msg, sender_id=0,receiver_id=0, component_id=0):
         """ Send a message over a serial link"""
         if isinstance(msg, PprzMessage):
             data = self.trans.pack_pprz_msg(sender_id, msg, receiver_id, component_id)
