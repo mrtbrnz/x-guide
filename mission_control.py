@@ -10,15 +10,16 @@ import numpy as np
 
 # if PAPARAZZI_SRC or PAPARAZZI_HOME not set, then assume the tree containing this
 # file is a reasonable substitute
-PPRZ_HOME = getenv("PAPARAZZI_HOME", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
-PPRZ_SRC = getenv("PAPARAZZI_SRC", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
-sys.path.append(PPRZ_SRC + "/sw/lib/python")
-sys.path.append(PPRZ_HOME + "/var/lib/python") # pprzlink
-import settings
-import pprz_connect
-from settings_xml_parse import PaparazziACSettings
+# PPRZ_HOME = getenv("PAPARAZZI_HOME", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
+# PPRZ_SRC = getenv("PAPARAZZI_SRC", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
+# sys.path.append(PPRZ_SRC + "/sw/lib/python")
+# sys.path.append(PPRZ_HOME + "/var/lib/python") # pprzlink
+# import settings
+# import pprz_connect
+# from settings_xml_parse import PaparazziACSettings
 
-from pprzlink.ivy import IvyMessagesInterface
+#from pprzlink.ivy import IvyMessagesInterface
+
 from pprzlink.message import PprzMessage
 
 from vector_fields import TrajectoryEllipse, ParametricTrajectory, spheric_geo_fence, repel, Controller
@@ -369,7 +370,7 @@ class SingleControl(object):
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
             self.update_belief_map(rc)
             rc.run()
-            
+
     def shutdown(self):
         if self._interface is not None:
             print("Shutting down THE interface...")
