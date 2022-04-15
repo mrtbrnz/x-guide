@@ -10,19 +10,23 @@ import numpy as np
 
 # if PAPARAZZI_SRC or PAPARAZZI_HOME not set, then assume the tree containing this
 # file is a reasonable substitute
-# PPRZ_HOME = getenv("PAPARAZZI_HOME", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
-# PPRZ_SRC = getenv("PAPARAZZI_SRC", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
-# sys.path.append(PPRZ_SRC + "/sw/lib/python")
-# sys.path.append(PPRZ_HOME + "/var/lib/python") # pprzlink
-# import settings
-# import pprz_connect
-# from settings_xml_parse import PaparazziACSettings
+PPRZ_HOME = getenv("PAPARAZZI_HOME", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
+PPRZ_SRC = getenv("PAPARAZZI_SRC", path.normpath(path.join(path.dirname(path.abspath(__file__)), '../../../../')))
+sys.path.append(PPRZ_SRC + "/sw/lib/python")
+sys.path.append(PPRZ_HOME + "/var/lib/python") # pprzlink
+import settings
+import pprz_connect
+from settings_xml_parse import PaparazziACSettings
 
-#from pprzlink.ivy import IvyMessagesInterface
+from pprzlink.ivy import IvyMessagesInterface
 
 from pprzlink.message import PprzMessage
 
 from vector_fields import TrajectoryEllipse, ParametricTrajectory, spheric_geo_fence, repel, Controller
+
+import pdb
+
+from scipy.spatial.transform import Rotation
 
 
 class Commands():
@@ -146,21 +150,36 @@ class FlightStatus(object):
         self.check_current_task()
         return self._current_task_time
 
+class Circle():
+    def __init__(self, radius=1.5, cx=0.0, cy=0.0, cz=4.0):
+        self.radius = radius
+        self.cx = cx
+        self.cy = cy
+        self.cz = cz
+
 
 class Vehicle(object):
     def __init__(self, ac_id, interface):
         self._initialized = False
         self._take_off = False
+        self._morphed = False
+        self._morph_state = 0.
+        self._fault = False
         self._land = False
         self._ac_id = ac_id
         self._interface = interface
         self._position_initial = np.zeros(3) # Initial Position for safely landing after Ctrl+C
+        self._initial_heading = 0.
+        self._des_heading = 0.
         self._position = np.zeros(3) # Position
         self._velocity = np.zeros(3) # Velocity
-        self.W = np.zeros(3) # Angles
+        self._quat = np.zeros(4) # Quaternion
+        self._euler = np.zeros(3) # phi-theta-psi Angles ! 
+        self._w = np.zeros(3)
         self.gvf_parameter = 0
         self.sm = None  # settings manager
         self.timeout = 0
+        self.battery_voltage = 12.0 # As a start... FIXME
         self.cmd = Commands(self._ac_id, self._interface)
         self.fs = FlightStatus(self._ac_id)
 
@@ -188,13 +207,24 @@ class Vehicle(object):
             print(f'We are inside assign properties for id {self._ac_id}')
             # We have the current position of the vehicle and can set it to the circle center
             self.traj = TrajectoryEllipse(np.array([self._position[0], self._position[1]]), ealpha, ea, eb)
+            self._circle = Circle(radius=1.1, cx=self._position[0], cy=self._position[1], cz=self._position[2])
+
             self._position_initial = self._position.copy() # Just for starting point assignement
+            self._initial_heading = self._euler[2] #0. # self.sm["nav_heading"].value
+            print(f'Heading initialized to : {self._initial_heading}')
+
             self.ctr = Controller(L=1e-1,beta=1e-2,k1=1e-3,k2=1e-3,k3=1e-3,ktheta=0.5,s=0.50)
+            # self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
+            #                                             XYZ_center=np.array([1.3, 1.3, -0.6]),
+            #                                             XYZ_delta=np.array([0., np.pi/2, 0.]),
+            #                                             XYZ_w=np.array([1,1,1]),
+            #                                             alpha=0.,
+            #                                             controller=self.ctr)
             self.traj_parametric = ParametricTrajectory(XYZ_off=np.array([0.,0.,2.5]),
-                                                        XYZ_center=np.array([1.3, 1.3, -0.6]),
-                                                        XYZ_delta=np.array([0., np.pi/2, 0.]),
-                                                        XYZ_w=np.array([1,1,1]),
-                                                        alpha=0.,
+                                                        XYZ_center=np.array([1.3, 1.3, 0.]),
+                                                        XYZ_delta=np.array([np.pi/2., 0. , 0.]),
+                                                        XYZ_w=np.array([2,1,1]),
+                                                        alpha=np.pi,
                                                         controller=self.ctr)
 
     def get_vector_field(self,mission_task, position=None):
@@ -212,38 +242,395 @@ class Vehicle(object):
 
         return V_des
 
-    def send_acceleration(self, V_des, A_3D=False):
+    def send_acceleration(self, V_des, A_3D=False, height_2D=2.):
         err = V_des - self._velocity#[:2]
         print(f'Velocity error {err[0]} , {err[1]}, {err[2]}')
         acc = err*self.ka
         if A_3D :
             self.cmd.accelerate(acc[0],acc[1],-acc[2], flag=1)
         else:
-            self.cmd.accelerate(acc[0],acc[1],2, flag=0) # Z is fixed to have a constant altitude... FIXME for 3D !
+            self.cmd.accelerate(acc[0],acc[1],height_2D, flag=0) # Z is fixed to have a constant altitude... FIXME for 3D !
         # return acc
 
 
     def calculate_cmd(self, mission_task):
         V_des = self.get_vector_field(self.fs.task)
 
+        def resurrect(self):
+            print('Resurrection')
+            if self._fault:
+                for i in range(3):
+                    self.sm["M1"] = 1.0
+                    print('Resurrecting M1')
+                    self.sm["M2"] = 1.0
+                    print('Resurrecting M2')
+                    self.sm["M3"] = 1.0
+                    print('Resurrecting M3')
+                    self.sm["M4"] = 1.0
+                    print('Resurrecting M4')
+                    self.sm["M5"] = 1.0
+                    print('Resurrecting M5')
+                    self.sm["M6"] = 1.0
+                    print('Resurrecting M6')
+                self._fault = False
+
+        def calc_energy_based_errors(self):
+            pos_err = self._position_initial - self._position
+
+
+        def calculate_path_following_error(verbose=False):
+            x = self._position[0] - self._circle.cx
+            y = self._position[1] - self._circle.cy
+            z = self._position[2] - self._circle.cz
+
+            error_r = self._circle.radius - np.sqrt(x**2+y**2)
+            error = np.linalg.norm([error_r, z])
+            # i=0; error=np.zeros(len(error_r))
+            # for er,ez in zip(error_r, z):
+            #     error[i] = la.norm([er,ez])
+            #     i+=1
+            # if verbose :
+            #     print('Mean : ',np.mean(error),'Standart deviation: ', np.std(error))
+            #     print('Path following error',np.sum(error)/i)
+            return error
+
+
+        def spin_heading(step=0.01):
+            ss = np.sign(step)
+            self._des_heading = self._des_heading + step
+            if ss<0 : # CCW spin
+                self._des_heading = 3.14 if self._des_heading< -3.1415 else self._des_heading
+            else:
+                self._des_heading = -3.14 if self._des_heading>3.1415 else self._des_heading
+            self.sm["nav_heading"] = self._des_heading*2**12
+
+        def follow_circle(height_2D=3.):
+            print('We are circling!!!')
+            V_des = self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
+            # Getting and setting the navigation heading of the vehicles
+            follow_heading = False #True
+            if follow_heading:
+                heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+                # heading_cur = self.sm["nav_heading"].value
+                # print(f'Nav heading error is : {heading_des-heading_cur}')
+                if self.sm:
+                    self.sm["nav_heading"] = heading_des
+
+            self.send_acceleration(V_des, A_3D=False, height_2D=height_2D)
+
+        def follow_panel_path(height_2D=2.):
+            print('We are following the path plan streamlines !!!')
+            V_des = self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
+            # Getting and setting the navigation heading of the vehicles
+            follow_heading = False #True
+            if follow_heading:
+                heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+                # heading_cur = self.sm["nav_heading"].value
+                # print(f'Nav heading error is : {heading_des-heading_cur}')
+                if self.sm:
+                    self.sm["nav_heading"] = heading_des
+
+            self.send_acceleration(V_des, A_3D=False, height_2D=height_2D)
+
+
+        def fail_motor(motor='M1', step=1.):
+            if not self._fault:
+                # for i in range(10):
+                cur_eff = self.sm[motor].value
+                print(f'Cur_eff : {cur_eff}')
+                # pdb.set_trace()
+                if cur_eff!=None:
+                    self.sm[motor] = np.clip( (cur_eff - step) ,0. , 1.)
+                    self._fault = True if self.sm[motor].value == 0.0 else False
+
+        def recover_motor(self, motor='M1', step=0.1):
+            if self._fault:
+                # for i in range(10):
+                self.sm[motor] = np.clip( (self.sm[motor].value + step) ,0. , 1.)
+                self._fault = False if self.sm[motor].value == 1.0 else True
+
+        def morph(gamma=1.0):
+            gamma = np.clip(gamma, -1., 1.)
+            self.sm["morph_common"] = gamma
+            self._morph_state = gamma
+
+        def morph_if_needed(pos_threshold=2.5, ang_threshold=1.57, safe_morph=1.0, in_circle=False):
+            if in_circle:
+                norm_pos_err = calculate_path_following_error()
+                print('Calculating pos error in circle', norm_pos_err)
+            else:
+                pos_err = self._position_initial - self._position
+                norm_pos_err = np.linalg.norm(pos_err)
+
+            heading_err = self._initial_heading - self._euler[2]
+            print(f'Heading  err : {heading_err}')
+                # print(f'Heading  cur : {self._euler[2]}')
+                # print(f'Position err : {norm_pos_err}')
+
+            if norm_pos_err > pos_threshold or abs(heading_err) > ang_threshold :
+                print('!!! Auto-Morph !!!')
+                # self._morph_direction = 
+                morph_cmd = safe_morph
+                self.sm["morph_common"] = morph_cmd
+                self._morph_state = morph_cmd
+
+        def sequence(mtime, motor,step_var,gamma, start_time,morph_phase=5., fail_phase=15, recovery_phase=5):
+            if start_time<= mtime < start_time+morph_phase:
+                morph(gamma=gamma)
+            if start_time+morph_phase<= mtime < start_time+morph_phase+fail_phase:
+                print('Motor Failed !')
+                fail_motor(motor=motor, step=step_var)
+            if start_time+morph_phase+fail_phase<= mtime < start_time+morph_phase+fail_phase+recovery_phase:
+                print('Recover the Motor')
+                recover_motor(self, motor=motor, step=step_var)
+            print(f' Gamma : {gamma:.2f}')
+            time = start_time+morph_phase+fail_phase+recovery_phase
+            # finished = 1 if mtime >= time
+            return time #, finished
+
+
+        if self.battery_voltage < 9.5:#13.8:
+            print('Battery Voltage : ', self.battery_voltage)
+            # morph(gamma=1.0)
+            mission_task = 'land'
+
+        if mission_task == 'morph':
+            print('Morphing')
+            if not self._morphed:
+                morph_cmd = 1.0
+                self.sm["morph_common"] = morph_cmd
+                self._morph_state = morph_cmd
+                self._morphed = True
+                # self.sm["morph_cmd_1"] = morph_cmd
+                # self.sm["morph_cmd_2"] = -morph_cmd
+                # morph_period, morph_dance
+
+        if mission_task == 'debug_mode':
+            print(f'Debug Mode')
+            pos_err = self._position_initial - self._position
+
+            # norm_pos_err = np.linalg.norm(pos_err)
+            # print(f'Position err : {norm_pos_err}')
+            spin_heading(step=0.01)
+
+            heading_err = self._des_heading - self._euler[2]
+
+            # print(f'Heading  err : {heading_err}')
+            # print(f'Heading  cur : {self._euler[2]}')
+
+            # print(f'W  cur : {self._euler[0]:.3f}  ,  {self._euler[1]:.3f}  ,  {self._euler[2]:.3f}')
+            # print(f' QUAT ::: {self._quat[0]:.2f}  ,  {self._quat[1]:.2f}  ,  {self._quat[2]:.2f}  ,  {self._quat[3]:.2f}')
+
+        if mission_task == 'follow_path_plan':
+            follow_circle(height_2D=2.)
+
+        if mission_task == 'Explore_robustness':
+            print(f'Exploring Robustness at : {self._morph_state}')
+
+            self._morph_state = np.clip((self._morph_state - 0.005), -1.0, 1.0)  # 0.005 @ 10Hz gives 40s for Y-X-Y transition
+            self.sm["morph_common"] = self._morph_state
+
+            # morph_if_needed(pos_threshold=1.5, ang_threshold=1.0, safe_morph=0.6)
+            morph_if_needed(pos_threshold=2.5, ang_threshold=1.57, safe_morph=1.0, in_circle=False)
+
+
+        if mission_task == 'Explore_robustness_circle_step':
+            mtime = self.fs.get_current_task_time()
+            step_var=1.0
+            motor="M6"
+            if 0<= mtime < 2.:
+                morph(gamma=1.0)
+                motor_list=['M1','M2','M3','M4','M5','M6']
+                for _M in motor_list:
+                    self.sm[_M] = 1.0
+            
+            start_time = sequence(mtime, motor, step_var, gamma=1.0,  start_time=5.,         morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.8,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.6,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.3,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.2,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.1,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.0,  start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.1, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.2, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.3, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.6, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.8, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+            start_time = sequence(mtime, motor, step_var, gamma=-1.0, start_time=start_time, morph_phase=1., fail_phase=15., recovery_phase=0.)
+
+            follow_circle(height_2D=4.)
+
+            morph_if_needed(pos_threshold=2.5, ang_threshold=1.57, safe_morph=1.0, in_circle=True)
+
+
+
+        if mission_task == 'Explore_robustness_hover_step':
+            mtime = self.fs.get_current_task_time()
+            step_var=1.0
+            motor="M6"
+            if 0<= mtime < 2.:
+                morph(gamma=1.0)
+                motor_list=['M1','M2','M3','M4','M5','M6']
+                for _M in motor_list:
+                    self.sm[_M] = 1.0
+
+            start_time = sequence(mtime, motor, step_var, gamma=1.0,  start_time=2.,         morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.8,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.6,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.3,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.2,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.1,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=0.0,  start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.1, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.2, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.3, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.6, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-0.8, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+            start_time = sequence(mtime, motor, step_var, gamma=-1.0, start_time=start_time, morph_phase=5., fail_phase=15., recovery_phase=8.)
+
+
+            morph_if_needed(pos_threshold=2.6, ang_threshold=1.57)
+            # morph_if_needed(pos_threshold=2.5, ang_threshold=1.57, safe_morph=1.0, in_circle=False)
+
+            # if 2<= mtime < 12.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # # if 6<= mtime < 30.:
+            # #     print('Morphing towards 0 !')
+            # #     morph(gamma=(self._morph_state - 0.005) )
+            # if 12<= mtime < 14.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+            # if 14<= mtime < 16.:
+            #     morph(gamma=0.6)
+            # if 16<= mtime < 26.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # if 26<= mtime < 28.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+            # if 28<= mtime < 30.:
+            #     morph(gamma=0.3)
+            # if 30<= mtime < 40.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # if 40<= mtime < 42.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+            # if 42<= mtime < 44.:
+            #     morph(gamma=0.2)
+            # if 44<= mtime < 54.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # if 54<= mtime < 56.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+            # if 56<= mtime < 58.:
+            #     morph(gamma=0.1)
+            # if 58<= mtime < 68.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # if 68<= mtime < 70.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+            # if 70<= mtime < 72.:
+            #     morph(gamma=0.0)
+            # if 72<= mtime < 82.:
+            #     print('Motor Failed !')
+            #     fail_motor(motor=motor, step=step_var)
+            # if 82<= mtime < 84.:
+            #     print('Recover the Motor')
+            #     recover_motor(self, motor=motor, step=step_var)
+
+
+
+            # Periodically do the below things :
+
+            # spin_heading(step=0.03)
+            # morph_if_needed(pos_threshold=2.5, ang_threshold=1.57)
+
+
+
+        if mission_task == 'M1_fault':
+            print('Fault on M1')
+            fail_motor('M1')
+
+        if mission_task == 'M2_fault':
+            print('Fault on M2')
+            if not self._fault:
+                for i in range(2):
+                    self.sm["M2"] = 0.0
+                self._fault=True
+
+        if mission_task == 'M3_fault':
+            print('Fault on M3')
+            if not self._fault:
+                for i in range(2):
+                    self.sm["M3"] = 0.0
+                self._fault=True
+
+        if mission_task == 'M4_fault':
+            print('Fault on M4')
+            if not self._fault:
+                for i in range(2):
+                    self.sm["M4"] = 0.0
+                self._fault=True
+
+        if mission_task == 'M5_fault':
+            print('Fault on M5')
+            if not self._fault:
+                for i in range(2):
+                    self.sm["M5"] = 0.0
+                self._fault=True
+
+        if mission_task == 'M6_fault':
+            print('Fault on M6')
+            if not self._fault:
+                for i in range(2):
+                    self.sm["M6"] = 0.0
+                self._fault=True
+
+        if mission_task == 'Resurrect1':
+            resurrect(self)
+        if mission_task == 'Resurrect2':
+            resurrect(self)
+        if mission_task == 'Resurrect3':
+            resurrect(self)
+        if mission_task == 'Resurrect4':
+            resurrect(self)
+        if mission_task == 'Resurrect5':
+            resurrect(self)
+        if mission_task == 'Resurrect6':
+            resurrect(self)
+        if mission_task == 'Resurrect7':
+            resurrect(self)
+
+
         if mission_task == 'takeoff':
             print('TAKE-OFF!!!')
             if not self._take_off :
                 self.cmd.jump_to_block(2)
                 time.sleep(0.5)
-                self.cmd.jump_to_block(2)
+                self.cmd.jump_to_block(3)
                 self._take_off = True
 
         elif mission_task == 'circle':
             print('We are circling!!!')
             V_des += self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
             # Getting and setting the navigation heading of the vehicles
-            
-            heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
-            heading_cur = self.sm["nav_heading"].value
-            # print(f'Nav heading error is : {heading_des-heading_cur}')
-            if self.sm:
-                self.sm["nav_heading"] = heading_des
+            follow_heading = True
+            if follow_heading:
+                heading_des = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+                # heading_cur = self.sm["nav_heading"].value
+                # print(f'Nav heading error is : {heading_des-heading_cur}')
+                if self.sm:
+                    self.sm["nav_heading"] = heading_des
+
             self.send_acceleration(V_des)
 
         elif mission_task == 'parametric_circle':
@@ -261,8 +648,8 @@ class Vehicle(object):
 
             # Getting and setting the navigation heading of the vehicles
             # print(f'Nav heading value is : {self.sm["nav_heading"]}')
-            if self.sm:
-                self.sm["nav_heading"] = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
+            # if self.sm:
+            #     self.sm["nav_heading"] = (1.5707963267948966-atan2(V_des[0],V_des[1]))*2**12
             # self.sm["nav_heading"] = 0.0
 
             self.send_acceleration(V_des, A_3D=True)
@@ -277,7 +664,7 @@ class Vehicle(object):
         elif mission_task == 'land':
             print('We are landing!!!')
             if not self._land :
-                self.cmd.jump_to_block(5)
+                self.cmd.jump_to_block(12)
                 self._land = True
 
         elif mission_task == 'safe2land':
@@ -327,7 +714,9 @@ class SingleControl(object):
                 rc._velocity[0] = float(msg['vnorth']) * i2v
                 rc._velocity[1] = float(msg['veast']) * i2v
                 rc._velocity[2] = float(msg['vup']) * i2v
-                rc.W[2] = float(msg['psi']) * i2w
+                rc._euler[0] = float(msg['phi']) * i2w
+                rc._euler[1] = float(msg['theta']) * i2w
+                rc._euler[2] = float(msg['psi']) * i2w
                 self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
                 rc.timeout = 0
                 rc._initialized = True
@@ -432,6 +821,14 @@ class MissionControl(object):
         self.vehicles = [Vehicle(id, self._interface) for id in self._vehicle_id_list]
 
     def subscribe_to_msg(self):
+        # bind to ENERGY message
+        def energy_cb(ac_id, msg):
+            if ac_id in self._vehicle_id_list and msg.name == "ENERGY":
+                rc = self.vehicles[self._vehicle_id_list.index(ac_id)]
+                rc.battery_voltage = float(msg['voltage'])
+
+        self._interface.subscribe(energy_cb, PprzMessage("telemetry", "ENERGY"))
+
         # bind to INS message
         def ins_cb(ac_id, msg):
             # if ac_id in self.ids and msg.name == "INS":
@@ -466,13 +863,15 @@ class MissionControl(object):
                 rc._velocity[0] = float(msg['vnorth']) * i2v
                 rc._velocity[1] = float(msg['veast']) * i2v
                 rc._velocity[2] = float(msg['vup']) * i2v
-                rc.W[2] = float(msg['psi']) * i2w
+                rc._euler[0] = float(msg['phi']) * i2w
+                rc._euler[1] = float(msg['theta']) * i2w
+                rc._euler[2] = float(msg['psi']) * i2w
                 self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
                 rc.timeout = 0
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        # self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
@@ -486,6 +885,18 @@ class MissionControl(object):
                 rc._velocity[0] = float(msg['speed'][1])
                 rc._velocity[1] = float(msg['speed'][0])
                 rc._velocity[2] = float(msg['speed'][2])
+                # Unitary quaternion representing LTP to BODY orientation (qi, qx, qy, qz)
+                rc._quat[0] = float(msg['quat'][0])
+                rc._quat[1] = float(msg['quat'][2])
+                rc._quat[2] = float(msg['quat'][1])
+                rc._quat[3] = -float(msg['quat'][3])
+
+                rc._euler = quat2euler(rc._quat)
+
+                rc._w[0] = float(msg['rate'][0])
+                rc._w[1] = float(msg['rate'][1])
+                rc._w[2] = float(msg['rate'][2])
+                # pdb.set_trace()
                 # print(f'Ground REF ac_id {ac_id}')
                 # print(f'X:{rc._position[0]} Y: {rc._position[1]} Z: {rc._position[2]}')
                 self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
@@ -493,7 +904,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
-        # self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+        self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
 
         ################################################################
 
@@ -551,10 +962,20 @@ class MissionControl(object):
 #                 rc._velocity[0] = float(msg['vnorth']) * i2v
 #                 rc._velocity[1] = float(msg['veast']) * i2v
 #                 rc._velocity[2] = float(msg['vup']) * i2v
-#                 rc.W[2] = float(msg['psi']) * i2w
+#                 rc._euler[2] = float(msg['psi']) * i2w
 #                 self._vehicle_position_map[ac_id] = {'X':rc._position[0],'Y':rc._position[1],'Z':rc._position[2]}
 #                 rc.timeout = 0
 #                 rc._initialized = True
+
+def quat2euler(quat):
+    '''quat : Unitary quaternion representing LTP to BODY orientation (qi, qx, qy, qz) '''
+    # from scipy.spatial.transform import Rotation
+    _quat=np.array([quat[1], quat[2], quat[3], quat[0] ])
+    rot = Rotation.from_quat(_quat)
+    # rot_euler = rot.as_euler('yxz', degrees=False)
+    rot_euler = rot.as_euler('xyz', degrees=False)
+    return rot_euler
+
 
 def main():
     import argparse
