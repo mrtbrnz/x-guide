@@ -155,7 +155,7 @@ class MissionControl(object):
             V_des = self.flow_vels[_index].copy()
             V_des_mag = np.linalg.norm(V_des)
             V_des_unit = V_des/V_des_mag
-            mag_clipped = np.clip(V_des_mag, 0., 2.0)
+            mag_clipped = np.clip(V_des_mag, 0., 0.3)
             rc.Set_Desired_Velocity(V_des_unit*mag_clipped, method='None') # direct - projection
             # print(f'Vehicle id :{_id} and its index :{self._vehicle_id_list.index(_id)} Position {rc._position[1]}')
             self.update_belief_map(rc)
@@ -187,7 +187,7 @@ class MissionControl(object):
 
     def create_Arena(self, arena_version=102):
         self.Arena = ArenaMap(version = arena_version)
-        self.Arena.Inflate(radius = 0.2)
+        self.Arena.Inflate(radius = 0.3)
         self.Arena.Panelize(size=0.01)
         self.Arena.Calculate_Coef_Matrix()
 
@@ -254,7 +254,14 @@ class MissionControl(object):
                 rc._velocity[0] = float(msg['vnorth']) * i2v
                 rc._velocity[1] = float(msg['veast']) * i2v
                 rc._velocity[2] = float(msg['vup']) * i2v
-                rc._position_enu[0] = x # dont forget to fix this for ENU !!!
+
+                rc._position_enu[1] = float(msg['north']) * i2p
+                rc._position_enu[0] = float(msg['east']) * i2p
+                rc._position_enu[2] = float(msg['up']) * i2p
+                rc._velocity_enu[1] = float(msg['vnorth']) * i2v
+                rc._velocity_enu[0] = float(msg['veast']) * i2v
+                rc._velocity_enu[2] = float(msg['vup']) * i2v
+
                 rc._euler[0] = float(msg['phi']) * i2w
                 rc._euler[1] = float(msg['theta']) * i2w
                 rc._euler[2] = float(msg['psi']) * i2w
