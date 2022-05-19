@@ -12,15 +12,20 @@ class Vehicle(object):
         self._morph_state = 0.
         self._fault = False
         self._land = False
+        self._state = 0
         self._ac_id = ac_id
         self._interface = interface
         self._position_initial = np.zeros(3) # Initial Position for safely landing after Ctrl+C
+        self._flight_height = 3.
         self._initial_heading = 0.
         self._des_heading = 0.
+        self._next_goal_list = [] # empty list
         self._position = np.zeros(3) # Position
         self._velocity = np.zeros(3) # Velocity
         self._position_enu = np.zeros(3) # Position
         self._velocity_enu = np.zeros(3) # Velocity
+        self._course = 0.
+        self._speed = 0. # For fixed-wing, 2d norm of projected ground speed from GPS
         self._quat = np.zeros(4) # Quaternion
         self._euler = np.zeros(3) # phi-theta-psi Angles ! 
         self._w = np.zeros(3)
@@ -40,6 +45,7 @@ class Vehicle(object):
         # self.position        = np.zeros(3)
         # self.velocity        = np.zeros(3)
         self.goal            = None
+        self.goal_index      = 0
         self.source_strength = 0.
         self.imag_source_strength = 0.
         self.gamma           = 0
@@ -52,6 +58,9 @@ class Vehicle(object):
         self.velocity_desired = np.zeros(3)
         self.velocity_corrected = np.zeros(3)
         self.vel_err = np.zeros(3)
+        self.err_last = np.zeros(3)
+        self.distance_goal_reached = 2.0 # m This should chance for indoor and outdoor and for fixed wing and rotarywing !!!! FIX ME
+        self.distance_goal_reached = 20.0 # FIX ME !!!
 
     # def Set_Position(self,pos):
     #     self.position = np.array(pos)
@@ -65,6 +74,20 @@ class Vehicle(object):
     #     self.velocity = vel
 
     def Set_Desired_Velocity(self,vel, method='direct'):
+        ''' NED(U) velocity coming from flow vels of Panel method '''
+        # Update the goal reached information now:
+        if self.goal != None:
+            self.distance_to_destination = np.linalg.norm(np.array(self.goal)-np.array(self._position_enu))
+            # print('vehicle.Set_Desired_Velocity : ', self._position_enu, self.goal, 'Dist:', self.distance_to_destination)
+
+            if self.distance_to_destination < self.distance_goal_reached:
+                print('========== POINT REACHED ============')
+                print('========== POINT REACHED ============')
+                print('========== POINT REACHED ============')
+                print('========== POINT REACHED ============')
+                self.state = 1
+                self.Select_Next_Goal()
+
         self.velocity_desired = vel
         self.correct_vel(method=method)
 
@@ -77,13 +100,22 @@ class Vehicle(object):
             self.vel_err = self.vel_err - (wind - np.dot(wind, self.velocity_desired/np.linalg.norm(self.velocity_desired) ) * np.linalg.norm(self.velocity_desired) ) *(1./240.)
         elif method == 'direct':
             # err = self.velocity_desired - self.velocity
-            self.vel_err = (self.velocity_desired - self.velocity)*(1./10.)
+            # cur_vel_enu = self._velocity_enu.copy()
+            # cur_vel_enu[1] = -cur_vel_enu[1]
+            dt  = 1./10.
+            err = self.velocity_desired - self._velocity
+            d_err = (err - self.err_last)/dt
+            self.err_last = err.copy()
+
+            self.vel_err = err*dt
             # self.vel_err = (self.velocity_desired - self.velocity)
             print(f' Vel err : {self.vel_err[0]:.3f}  {self.vel_err[1]:.3f}  {self.vel_err[2]:.3f}')
         else:
             self.vel_err = np.array([0., 0., 0.])
+            d_err = np.zeros(3)
+            err = np.zeros(3)
 
-        self.velocity_corrected = self.velocity_desired + self.vel_err
+        self.velocity_corrected = self.velocity_desired + err*0.0 + self.vel_err*2.5 + d_err*0.6
         self.velocity_corrected[2] = 0.
         # print(f' Wind              : {wind[0]:.3f}  {wind[1]:.3f}  {wind[2]:.3f}')
         # print(f' Projected Vel err : {self.vel_err[0]:.3f}  {self.vel_err[1]:.3f}  {self.vel_err[2]:.3f}')
@@ -104,8 +136,21 @@ class Vehicle(object):
         self.sink_strength = goal_strength
         self.safety = safety
 
-    def Set_Next_Goal(self,goal, goal_strength=500):
-        self.state         = 0
+    def Set_Flight_Height(self,height):
+        self._flight_height = height
+
+    def Set_Next_Goal_List(self, next_goal_list):
+        self._next_goal_list = next_goal_list
+
+    def Select_Next_Goal(self):
+        self.goal_index += 1
+        self.goal_index = self.goal_index%len(self._next_goal_list)
+        goal = self._next_goal_list[self.goal_index]
+        self.Set_Next_Goal(goal)
+
+    def Set_Next_Goal(self,goal, goal_strength=5):
+        # Putting the state back to zero
+        self.state = 0
         self.goal          = goal
         # self.sink_strength = goal_strength NOT USED FOR NOW
 
@@ -127,6 +172,9 @@ class Vehicle(object):
     @property
     def state(self):
         return self._state
+    @state.setter
+    def state(self,val):
+        self._state = val
 
     def assign_properties(self):
         # while self._initialized == False :
@@ -250,11 +298,13 @@ class Vehicle(object):
         def follow_panel_path(height_2D=2.):
             print('  ')
             print('We are following the path plan streamlines !!!')
-            V_des = self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
-
-            print('NED Desired Panel Path Velocity : ',self.velocity_desired)
-            print('NED position : ', self._position)
-            print('ENU position : ', self._position_enu)
+            # V_des = self.traj.get_vector_field(self._position[0], self._position[1], self._position[2])*self.circle_vel
+            # print('  ')
+            # print('NED Desired   Panel Path Velocity : ',self.velocity_desired, np.linalg.norm(self.velocity_desired))
+            # print('NED Corrected Panel Path Velocity : ',self.velocity_corrected, np.linalg.norm(self.velocity_corrected))
+            # print('NED VelENU    Panel Path Velocity : ',self._velocity_enu, np.linalg.norm(self._velocity_enu))
+            # print('NED position : ', self._position)
+            # print('ENU position : ', self._position_enu)
 
             # Getting and setting the navigation heading of the vehicles
             follow_heading = False #True
@@ -265,7 +315,58 @@ class Vehicle(object):
                 if self.sm:
                     self.sm["nav_heading"] = heading_des
 
-            self.send_acceleration(self.velocity_desired, A_3D=False, height_2D=height_2D)
+            self.send_acceleration(self.velocity_corrected, A_3D=False, height_2D=height_2D)
+
+
+        def follow_fixed_wing_panel_path():
+            # if self.sm:
+            #     print('Path plan angle : ', self.sm["path_plan_roll_angle"].value )
+
+                # self.sm["path_plan_roll_angle"] = self.sm["path_plan_roll_angle"].value - 0.1
+            # print('Vel desired : ',self.velocity_desired, ' Vel actual : ', self._velocity)
+            # print('Speed : ', self._speed)
+            # print('Course : ', self._course) # North is zero, rotation right is positive , rotation left is negative, switching at south 3.1415...
+            # calculate the desired heading from desired velocity
+            # Get desired and actual 2D velocity norms
+            # vel_des_norm = np.sqrt(self.velocity_desired[0]**2 + self.velocity_desired[1]**2)
+            # vel_norm = np.sqrt(self._velocity[0]**2 + self._velocity[1]**2)
+
+            def norm_ang(x):
+                while x > np.pi :
+                    x -= 2*np.pi
+                while x < -np.pi :
+                    x += 2*np.pi
+                return x
+
+            vel = self._velocity[:2]
+            vel_des = self.velocity_desired[:2]
+            vel_norm     = np.linalg.norm(vel)
+            vel_des_norm = np.linalg.norm(vel_des)
+
+            # vel_err = vel_des/vel_des_norm - vel/vel_norm
+
+            vel_unit     = vel/np.linalg.norm(vel)
+            vel_des_unit = vel_des/np.linalg.norm(vel_des)
+
+            # vel_err = vel_des/vel_des_norm - vel/vel_norm
+
+            heading = np.arctan2(vel_unit[1], vel_unit[0])
+            heading_des = np.arctan2(vel_des_unit[1], vel_des_unit[0])
+
+            heading_err = norm_ang(heading_des-heading)
+
+
+            # roll_setpoint = np.arctan(heading_err * 15. / 9.81 / np.cos(0.))
+
+            # heading err
+            # omega = np.arccos((vel.dot(vel_des))/(vel_norm*vel_des_norm))
+            # calculate a roll angle to reduce the heading error 
+            theta = 0.
+            roll_setpoint = np.arctan(heading_err * self._speed / 9.81 / np.cos(theta)) * 0.4
+            # print('Roll setpoint : ', np.degrees(roll_setpoint), )
+            print(f' Heaading : {np.degrees(heading):.2f} Desired : {np.degrees(heading_des):.2f}   Err : {np.degrees(heading_err):.2f}, Roll setpoint :  {np.degrees(roll_setpoint):.2f}')
+
+            self.sm["path_plan_roll_angle"] = np.clip(np.degrees(roll_setpoint),-55., 55.)
 
 
         def fail_motor(motor='M1', step=1.):
@@ -357,7 +458,12 @@ class Vehicle(object):
             # print(f' QUAT ::: {self._quat[0]:.2f}  ,  {self._quat[1]:.2f}  ,  {self._quat[2]:.2f}  ,  {self._quat[3]:.2f}')
 
         if mission_task == 'follow_path_plan':
-            follow_panel_path(height_2D=2.)
+            follow_panel_path(height_2D=self._flight_height)
+
+
+        if mission_task == 'follow_fixed_wing_path_plan':
+            follow_fixed_wing_panel_path()
+
 
         if mission_task == 'Explore_robustness':
             print(f'Exploring Robustness at : {self._morph_state}')

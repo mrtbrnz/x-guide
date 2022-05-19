@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import sys
+import os
 from os import path, getenv
 
 from math import radians, atan2
@@ -146,17 +147,18 @@ class MissionControl(object):
         time.sleep(0.5)
         # self.assign_vehicle_properties()
 
-    def run_every_vehicle(self):
+    def run_every_vehicle(self, velocity_limit=0.6, flight_height=20., method='None'):
         self.calculate_Arena_Flow()
         # Once it is threaded, below lines can be used to start each vehicles runtime
         for _id in self._vehicle_id_list:
             _index = self._vehicle_id_list.index(_id)
             rc = self.vehicles[_index]
+            rc.Set_Flight_Height(flight_height)
             V_des = self.flow_vels[_index].copy()
             V_des_mag = np.linalg.norm(V_des)
             V_des_unit = V_des/V_des_mag
-            mag_clipped = np.clip(V_des_mag, 0., 0.3)
-            rc.Set_Desired_Velocity(V_des_unit*mag_clipped, method='None') # direct - projection
+            mag_clipped = np.clip(V_des_mag, 0., velocity_limit)
+            rc.Set_Desired_Velocity(V_des_unit*mag_clipped, method=method) # direct - projection
             # print(f'Vehicle id :{_id} and its index :{self._vehicle_id_list.index(_id)} Position {rc._position[1]}')
             self.update_belief_map(rc)
             rc.run()
@@ -185,11 +187,23 @@ class MissionControl(object):
         self._connect.get_aircrafts() # Not sure if we need that all the time, as it is subscribed for every NEW_AIRCRAFT...
         self.create_vehicles()
 
-    def create_Arena(self, arena_version=102):
-        self.Arena = ArenaMap(version = arena_version)
-        self.Arena.Inflate(radius = 0.3)
-        self.Arena.Panelize(size=0.01)
-        self.Arena.Calculate_Coef_Matrix()
+    def create_Arena(self, arena_version=102, radius = 0.3, panel_size=0.01, force_init=False):
+        Arena_not_created = True
+        if not force_init:
+            # if this file exists.... FIX ME
+            self.Arena = np.load(os.path.dirname(os.path.abspath(__file__))+"/matrix/arena_version"+str(arena_version)+".npy", 'rb')
+            Arena_not_created = False
+
+        if Arena_not_created:
+            self.Arena = ArenaMap(version = arena_version)
+            self.Arena.Inflate(radius = radius)
+            self.Arena.Panelize(size=panel_size)
+            self.Arena.Calculate_Coef_Matrix()
+            # Saving arena for the next time :
+            print('Saving the calculated Arena Matrix...')
+            with open(os.path.dirname(os.path.abspath(__file__))+"/matrix/arena_version"+str(arena_version)+".npy", 'wb') as arena_file:
+                np.savez(arena_file)
+
 
     def calculate_Arena_Flow(self):
         self.flow_vels = Flow_Velocity_Calculation(self.vehicles,self.Arena)
@@ -199,13 +213,14 @@ class MissionControl(object):
         self.flow_vels = rot.dot(self.flow_vels.T).T
 
 
-    def assign_path_plan_properties(self, vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list):
-        for _id,set_source,set_imaginary_source,set_goal,set_goto_goal in zip(vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list):
+    def assign_path_plan_properties(self, vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list, vehicle_next_goal_list):
+        for _id,set_source,set_imaginary_source,set_goal,set_goto_goal, next_goal_list in zip(vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list, vehicle_next_goal_list):
             rc = self.vehicles[self._vehicle_id_list.index(_id)]
             rc.Set_Source(set_source)
             rc.Set_Imaginary_Source(set_imaginary_source)
             rc.Set_Goal(set_goal[0],set_goal[1],set_goal[2])
             rc.Go_to_Goal(set_goto_goal[0],set_goto_goal[1],set_goto_goal[2],set_goto_goal[3])
+            rc.Set_Next_Goal_List(next_goal_list)
 
     def create_vehicles(self):
         self._vehicle_id_list=[int(_id) for _id in self._connect.conf_by_id().keys()]
@@ -270,8 +285,38 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if the quadrotors are providing state information to use_deep_guidance.py
-        # self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
+        self._interface.subscribe(rotorcraft_fp_cb, PprzMessage("telemetry", "ROTORCRAFT_FP"))
     
+
+
+        def fixed_wing_xy_cb(ac_id, msg):
+            # print('Callback : ', ac_id, msg.name)
+            # ac_id = int(msg['ac_id'])
+            if ac_id in self._vehicle_id_list and msg.name == "NAVIGATION":
+                fw = self.vehicles[self._vehicle_id_list.index(ac_id)]
+                fw._position[0] = float(msg['pos_x'])
+                fw._position[1] = float(msg['pos_y'])
+
+                fw._position_enu[0] = float(msg['pos_x'])
+                fw._position_enu[1] = float(msg['pos_y'])
+
+        def fixed_wing_z_cb(ac_id, msg):
+            # ac_id = int(msg['ac_id'])
+            if ac_id in self._vehicle_id_list:
+                fw = self.vehicles[self._vehicle_id_list.index(ac_id)]
+                fw._position[2] = float(msg['alt'])/1000.
+                fw._position_enu[2] = float(msg['alt'])/1000.
+                fw._course = float(msg['course'])*np.pi/1800.
+                fw._speed = float(msg['speed'])/100.
+                # Calculate Velocity
+                fw._velocity = np.array([np.cos(fw._course)*fw._speed, np.sin(fw._course)*fw._speed, float(msg['climb'])*100.])
+
+        self._interface.subscribe(fixed_wing_xy_cb, PprzMessage("telemetry", "NAVIGATION"))
+        self._interface.subscribe(fixed_wing_z_cb, PprzMessage("telemetry", "GPS"))
+
+
+
+
         # bind to GROUND_REF message : ENAC Voliere is sending LTP_ENU
         def ground_ref_cb(ground_id, msg):
             ac_id = int(msg['ac_id'])
@@ -310,7 +355,7 @@ class MissionControl(object):
                 rc._initialized = True
         
         # Un-comment this if optitrack is being used for state information for use_deep_guidance.py **For use only in the Voliere**
-        self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
+        # self._interface.subscribe(ground_ref_cb, PprzMessage("ground", "GROUND_REF"))
 
         ################################################################
 

@@ -84,17 +84,17 @@ def main():
 
     # mission_plan_dict={ 'Explore_robustness_circle_step'  :{'start':None, 'duration':600, 'finalized':False} }
 
-    arena_version = 102
-    vehicle_id_list =   [1]
-    vehicle_source_list = [0.95] # Source_strength
-    vehicle_imaginary_source_list = [1.5] # Imaginary source_strength
-    vehicle_goal_list = [([3.0, 3, 1.4], 5, 0.00)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
-    vehicle_goto_goal_list =[[1.4,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
-    vehicle_pos_list = [[-3.0, 3, 1.4]]
-    vehicle_next_goal_list = [[1.5, 3, 1.4], [-1.5, 3, 1.4]]
-    # vehicle_next_goal_list = [[3., 2, 1.4], [-3., 2, 1.4], [-3., 1, 1.4], [3., 1, 1.4], [3., 0, 1.4], [-3., 0, 1.4], [-3., -1, 1.4], [3., -1, 1.4], [3., -2, 1.4],[-3., -2, 1.4],[-3., -3, 1.4],[3., -3, 1.4], [3., 2, 1.4], [-3., 2, 1.4], [-3., 1, 1.4], [3., 1, 1.4], [3., 0, 1.4], [-3., 0, 1.4], [-3., -1, 1.4], [3., -1, 1.4],  ]
-    # vehicle_next_goal_list = [[3., -3, 1.4], [-3., -3, 1.4], [-3., 2, 1.4], [2., 2, 1.4],[2., -2, 1.4], [-2., -2, 1.4], [-2., 1, 1.4], [1., 1, 1.4], [1., -1, 1.4], [-1., -1, 1.4], [-1., 0, 1.4], [0., 0, 1.4] ]
-    goal_index = 0
+    # arena_version = 102
+    # vehicle_id_list =   [1]
+    # vehicle_source_list = [0.95] # Source_strength
+    # vehicle_imaginary_source_list = [1.5] # Imaginary source_strength
+    # vehicle_goal_list = [([3.0, 3, 1.4], 5, 0.00)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    # vehicle_goto_goal_list =[[1.4,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    # vehicle_pos_list = [[-3.0, 3, 1.4]]
+    # vehicle_next_goal_list = [[1.5, 3, 1.4], [-1.5, 3, 1.4]]
+    # # vehicle_next_goal_list = [[3., 2, 1.4], [-3., 2, 1.4], [-3., 1, 1.4], [3., 1, 1.4], [3., 0, 1.4], [-3., 0, 1.4], [-3., -1, 1.4], [3., -1, 1.4], [3., -2, 1.4],[-3., -2, 1.4],[-3., -3, 1.4],[3., -3, 1.4], [3., 2, 1.4], [-3., 2, 1.4], [-3., 1, 1.4], [3., 1, 1.4], [3., 0, 1.4], [-3., 0, 1.4], [-3., -1, 1.4], [3., -1, 1.4],  ]
+    # # vehicle_next_goal_list = [[3., -3, 1.4], [-3., -3, 1.4], [-3., 2, 1.4], [2., 2, 1.4],[2., -2, 1.4], [-2., -2, 1.4], [-2., 1, 1.4], [1., 1, 1.4], [1., -1, 1.4], [-1., -1, 1.4], [-1., 0, 1.4], [0., 0, 1.4] ]
+    # goal_index = 0
 
 
     # # Case 12.2 : Arena 6 : 3 Vehicles
@@ -106,13 +106,18 @@ def main():
     # vehicle_goto_goal_list =[[0.5,0,0,0],[0.5,0,0,0], [0.5,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
     # vehicle_pos_list = [[-2., 3., 0.5],[-2., -3, 0.5], [-3, 0, 0.5]]
 
-    arena_version = 6
-    vehicle_id_list =  [1]
-    vehicle_source_list = [0.65] # Source_strength
-    vehicle_imaginary_source_list = [0.95] # Imaginary source_strength
-    vehicle_goal_list = [([2.5, -3.5, 0.5], 5, 0.00),  ]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
-    vehicle_goto_goal_list =[[0.5,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
-    vehicle_pos_list = [[-2., 3., 0.5]]
+    # # MUret Sim trial
+    # arena_version = 61
+    # vehicle_id_list =  [18]
+    # vehicle_source_list = [0.65] # Source_strength
+    # vehicle_imaginary_source_list = [0.95] # Imaginary source_strength
+    # vehicle_goal_list = [([2.5, -3.5, 10.], 5, 0.00),  ]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    # vehicle_goto_goal_list =[[10.,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    # vehicle_pos_list = [[-2., 3., 10.0]]
+    # vehicle_next_goal_list = [ [ [2.5, -3.5, 10.], [-3., 0., 10.],[3.0, 3.5, 10.], [2.5, -3.5, 10.],  [-3., 0., 10.], [4., 0., 10.] ]  ]
+    # # vehicle_next_goal_list = [ [ [4., 0., 10.] ,[2.5, -3.5, 10.], [3.0, 3.5, 10.], [2.5, -3.5, 10.],[-3., 0., 10.],  [-3., 0., 10.] ]  ]
+    # # vehicle_next_goal_list = [ [ [-3., 0., 10.], [3.0, 3.5, 10.], [2.5, -3.5, 10.],  [-3., 0., 10.], [-0.5, 3., 10.]]  ]
+
 
     # vehicle_id_list =   [1]
     # vehicle_source_list = [0.65] # Source_strength
@@ -129,13 +134,46 @@ def main():
     # vehicle_pos_list = [[-2., 3., 0.5], [-3., 0., 0.5]]
 
     # # Centered Hexa Building to see the repulsion of buildings plus the corrected velocity following.
-    arena_version = 201 # 102 #202 
-    vehicle_id_list =   [1]
-    vehicle_source_list = [0.95] # Source_strength
-    vehicle_imaginary_source_list = [0.75] # Imaginary source_strength
-    vehicle_goal_list = [([3.0, 1, 1.4], 5, 0.00)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
-    vehicle_goto_goal_list =[[1.4,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
-    vehicle_pos_list = [[-3.0, 1, 1.4]]
+    # arena_version = 201 # 102 #202 
+    # vehicle_id_list =   [18]
+    # vehicle_source_list = [0.95] # Source_strength
+    # vehicle_imaginary_source_list = [0.75] # Imaginary source_strength
+    # vehicle_goal_list = [([3.0, 1, 1.4], 5, 0.00)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    # vehicle_goto_goal_list =[[1.4,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    # vehicle_pos_list = [[-3.0, 1, 1.4]]
+
+    # Muret Single Vehicle Star Shape Flight
+    # arena_version = 8
+    # vehicle_id_list =   [18]
+    # vehicle_source_list = [0.95] # Source_strength
+    # vehicle_imaginary_source_list = [1.0] # Imaginary source_strength
+    # vehicle_goal_list = [([40., 50., 10.], 5, 0.0)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    # vehicle_goto_goal_list =[[10.,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    # vehicle_pos_list = [[0., 0., 10.]]
+    # vehicle_next_goal_list = [ [[40., 50., 10.], [40, 5, 10.], [10, 45, 10], [55, 25, 10], [0, 0, 10]]  ]
+
+
+    # # Case 15
+    arena_version = 8
+    vehicle_id_list =   [18, 4]
+    vehicle_source_list = [1.5, 1.5] # Source_strength
+    vehicle_imaginary_source_list = [1.0, 1.0] # Imaginary source_strength
+    vehicle_goal_list = [([40., 50., 10.], 5, 0.0), ([30., 30., 10.], 5, 0.0)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    vehicle_goto_goal_list =[ [10.,0,0,0], [10.,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    vehicle_pos_list = [[0., 0., 10.], [0., 50., 10.]]
+    vehicle_next_goal_list = [ [[40., 50., 10.],[55., 20., 10.],[20., 35., 10.] ],     [[30., 30., 10.], [25., 5., 10.],[0., 50., 10.]]   ]
+
+
+    # # Case 17 Cancelled
+    # arena_version = 8
+    # vehicle_id_list =   [18, 4]
+    # vehicle_source_list = [0.95, 0.95] # Source_strength
+    # vehicle_imaginary_source_list = [1.0, 1.0] # Imaginary source_strength
+    # vehicle_goal_list = [([55., 20., 10.], 5, 0.0), ([15., 27., 10.], 5, 0.0)]# goal,goal_strength all 5, safety 0.001 for V1 safety = 0 when there are sources
+    # vehicle_goto_goal_list =[ [10.,0,0,0], [10.,0,0,0] ] # altitude,AoA,t_start,Vinf=0.5,0.5,1.5
+    # vehicle_pos_list = [[20., 35., 10.], [38., 45., 10.]]
+    # vehicle_next_goal_list = [ [[55., 20., 10.]], [[15., 27., 10.]]   ]
+
 
 
     vehicle_parameter_dict={}
@@ -145,8 +183,8 @@ def main():
             mc = MissionControl(interface=interface)
             mc.assign(mission_plan_dict)
             mc.assign_vehicle_properties()
-            mc.create_Arena(arena_version=arena_version, force_init=True)
-            mc.assign_path_plan_properties(vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list)
+            mc.create_Arena(arena_version=arena_version, radius = 1.0, panel_size=0.1, force_init=True)
+            mc.assign_path_plan_properties(vehicle_id_list, vehicle_source_list, vehicle_imaginary_source_list, vehicle_goal_list, vehicle_goto_goal_list, vehicle_next_goal_list)
             # import pdb
             # pdb.set_trace()
 
@@ -156,7 +194,7 @@ def main():
             while True:
                 t0=time.time()
                 # mc.run_every_vehicle(velocity_limit=0.5, method='None')
-                mc.run_every_vehicle(velocity_limit=0.5, method='None') # direct - projection
+                mc.run_every_vehicle(velocity_limit=1.5, flight_height=10., method='None') # direct - projection
                 for _id in mc._vehicle_id_list:
                     _index = mc._vehicle_id_list.index(_id)
                     rc = mc.vehicles[_index]
@@ -173,7 +211,7 @@ def main():
                 # print(1./(time.time()-t0) , 'Hz' )
 
         except (KeyboardInterrupt, SystemExit):
-            logger.save(flight_type='pprz')
+            logger.save(flight_type='outdoor')
             mission_end_plan_dict={'Resurrect7' :{'start':None, 'duration':10, 'finalized':False}, 'safe2land'  :{'start':None, 'duration':15, 'finalized':False} }
             mc.assign(mission_end_plan_dict)  # mc.assign_vehicle_properties()
             time.sleep(0.5)

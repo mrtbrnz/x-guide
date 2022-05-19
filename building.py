@@ -195,13 +195,13 @@ class Building():
             vel_sink[:,0] = (-vehicle.sink_strength*(self.pcp[:,0]-vehicle.goal[0]))/(2*np.pi*((self.pcp[:,0]-vehicle.goal[0])**2+(self.pcp[:,1]-vehicle.goal[1])**2))
             vel_sink[:,1] = (-vehicle.sink_strength*(self.pcp[:,1]-vehicle.goal[1]))/(2*np.pi*((self.pcp[:,0]-vehicle.goal[0])**2+(self.pcp[:,1]-vehicle.goal[1])**2))
 
-            vel_source_imag[:,0] = (vehicle.imag_source_strength*(self.pcp[:,0]-vehicle.position[0]))/(2*np.pi*((self.pcp[:,0]-vehicle.position[0])**2+(self.pcp[:,1]-vehicle.position[1])**2))
-            vel_source_imag[:,1] = (vehicle.imag_source_strength*(self.pcp[:,1]-vehicle.position[1]))/(2*np.pi*((self.pcp[:,0]-vehicle.position[0])**2+(self.pcp[:,1]-vehicle.position[1])**2))
+            vel_source_imag[:,0] = (vehicle.imag_source_strength*(self.pcp[:,0]-vehicle._position_enu[0]))/(2*np.pi*((self.pcp[:,0]-vehicle._position_enu[0])**2+(self.pcp[:,1]-vehicle._position_enu[1])**2))
+            vel_source_imag[:,1] = (vehicle.imag_source_strength*(self.pcp[:,1]-vehicle._position_enu[1]))/(2*np.pi*((self.pcp[:,0]-vehicle._position_enu[0])**2+(self.pcp[:,1]-vehicle._position_enu[1])**2))
 
             for i,othervehicle in enumerate(othervehicles) :
                     
-                    vel_source[:,0] += (othervehicle.source_strength*(self.pcp[:,0]-othervehicle.position[0]))/(2*np.pi*((self.pcp[:,0]-othervehicle.position[0])**2+(self.pcp[:,1]-othervehicle.position[1])**2))
-                    vel_source[:,1] += (othervehicle.source_strength*(self.pcp[:,1]-othervehicle.position[1]))/(2*np.pi*((self.pcp[:,0]-othervehicle.position[0])**2+(self.pcp[:,1]-othervehicle.position[1])**2))
+                    vel_source[:,0] += (othervehicle.source_strength*(self.pcp[:,0]-othervehicle._position_enu[0]))/(2*np.pi*((self.pcp[:,0]-othervehicle._position_enu[0])**2+(self.pcp[:,1]-othervehicle._position_enu[1])**2))
+                    vel_source[:,1] += (othervehicle.source_strength*(self.pcp[:,1]-othervehicle._position_enu[1]))/(2*np.pi*((self.pcp[:,0]-othervehicle._position_enu[0])**2+(self.pcp[:,1]-othervehicle._position_enu[1])**2))
 
 
             RHS[:,0]  = -vehicle.V_inf[0]  * np.cos(self.pb[:])  \
@@ -245,8 +245,8 @@ class Building():
 
                 # Calculates velocity induced on each panel by source elements.
                 for othervehicle in othervehicles:
-                    vel_source[m,0] += (othervehicle.source_strength*(self.pcp[m][0]-othervehicle.position[0]))/(2*np.pi*((self.pcp[m][0]-othervehicle.position[0])**2+(self.pcp[m][1]-othervehicle.position[1])**2))
-                    vel_source[m,1] += (othervehicle.source_strength*(self.pcp[m][1]-othervehicle.position[1]))/(2*np.pi*((self.pcp[m][0]-othervehicle.position[0])**2+(self.pcp[m][1]-othervehicle.position[1])**2))
+                    vel_source[m,0] += (othervehicle.source_strength*(self.pcp[m][0]-othervehicle._position_enu[0]))/(2*np.pi*((self.pcp[m][0]-othervehicle._position_enu[0])**2+(self.pcp[m][1]-othervehicle._position_enu[1])**2))
+                    vel_source[m,1] += (othervehicle.source_strength*(self.pcp[m][1]-othervehicle._position_enu[1]))/(2*np.pi*((self.pcp[m][0]-othervehicle._position_enu[0])**2+(self.pcp[m][1]-othervehicle._position_enu[1])**2))
                 # Right Hand Side of panel method eq.
                     # Normal comp. of freestream +  Normal comp. of velocity induced by sink + Normal comp. of velocity induced by sources
                 RHS[m]  = -vehicle.V_inf[0] * np.cos(self.pb[m] + (np.pi/2))  \
